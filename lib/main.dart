@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'views/auth/login-page.dart';
+import 'Views/auth/login-page.dart';
+import 'Views/auth/esqueceu-senha/enviar-codigo.dart';
 
 void main() {
   runApp(const EcoChefApp());
@@ -13,7 +14,14 @@ class EcoChefApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'EcoChef',
-      home: const LoginScreen(),
+
+      initialRoute: '/',
+      
+      routes: {
+        '/': (context) => const LoginScreen(),
+        '/esqueci-senha': (context) => ForgotPasswordPage(),
+      },
+
     );
   }
 }

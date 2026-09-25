@@ -1,20 +1,28 @@
 import 'package:flutter/material.dart';
+import 'esqueceu-senha/enviar-codigo.dart';
 
 class LoginScreen extends StatelessWidget {
   const LoginScreen({super.key});
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('EcoChef'),
-      ),
-       body: Padding(
-        padding: const EdgeInsets.all(24.0),
+@override
+Widget build(BuildContext context) {
+  return Scaffold(
+    backgroundColor: const Color(0xFFF4F7FA),
+
+    body: Padding(
+      padding: const EdgeInsets.all(24.0),
 
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+
+            Image.asset(
+                'assets/images/logo.png',
+            width: 150,
+        ),
+            Text('Ecochef'),
+
+            const SizedBox(height: 30),
 
             // Campo de e-mail
             TextField(
@@ -42,7 +50,7 @@ class LoginScreen extends StatelessWidget {
               alignment: Alignment.centerRight,
               child: TextButton(
                 onPressed: () {
-                  // Futuramente vamos colocar a recuperação de senha aqui
+                  Navigator.pushNamed(context, '/esqueci-senha');
                 },
                 child: const Text(
                   'Esqueci minha senha',
@@ -57,27 +65,12 @@ class LoginScreen extends StatelessWidget {
 
             // Botão Entrar
             SizedBox(
-              width: double.infinity,
               child: ElevatedButton(
-                onPressed: () {
-                  // Futuramente vamos fazer o login aqui
-                },
+                onPressed: () {},
                 child: const Text('Entrar'),
               ),
             ),
 
-            const SizedBox(height: 16),
-
-            // Botão Cadastrar
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                onPressed: () {
-                  // Futuramente vamos abrir a tela de cadastro
-                },
-                child: const Text('Cadastrar'),
-              ),
-            ),
           ],
         ),
       ),
