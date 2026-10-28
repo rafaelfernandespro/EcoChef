@@ -1,4 +1,7 @@
+
 import 'package:flutter/material.dart';
+import 'cadastrar-produto.dart';
+
 
 const azulPrincipal = Color(0xFF2563EB);
 const azulEscuro = Color(0xFF1E3A8A);
@@ -42,7 +45,6 @@ class _EstoquePageState extends State<EstoquePage> {
   String filtroTipo = 'Todos';
 
   // Dados fictícios para demonstrar a tela.
-  // Posteriormente, serão substituídos pelos dados do banco.
   final List<ProdutoEstoque> produtos = [
     ProdutoEstoque(
       nome: 'Arroz',
@@ -142,6 +144,36 @@ class _EstoquePageState extends State<EstoquePage> {
     return '$dia/$mes/$ano';
   }
 
+  // Abre a tela de cadastro e recebe o produto cadastrado.
+  Future<void> _abrirCadastroProduto() async {
+    final resultado = await Navigator.push<ProdutoEstoque>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CadastrarProdutoPage(),
+      ),
+    );
+
+    if (!mounted || resultado == null) return;
+
+    setState(() {
+      produtos.add(resultado);
+
+      // Atualiza os filtros para mostrar o novo produto.
+      filtroStatus = 'Todos';
+      filtroTipo = 'Todos';
+      pesquisaController.clear();
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '${resultado.nome} cadastrado com sucesso!',
+        ),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final lista = produtosFiltrados;
@@ -159,7 +191,6 @@ class _EstoquePageState extends State<EstoquePage> {
                   children: [
                     _cabecalho(context),
                     const SizedBox(height: 28),
-
                     const Text(
                       'Estoque',
                       style: TextStyle(
@@ -176,17 +207,11 @@ class _EstoquePageState extends State<EstoquePage> {
                         color: textoSecundario,
                       ),
                     ),
-
                     const SizedBox(height: 22),
-
                     _campoPesquisa(),
-
                     const SizedBox(height: 12),
-
                     _filtros(),
-
                     const SizedBox(height: 22),
-
                     Row(
                       children: [
                         const Text(
@@ -207,13 +232,11 @@ class _EstoquePageState extends State<EstoquePage> {
                         ),
                       ],
                     ),
-
                     const SizedBox(height: 12),
                   ],
                 ),
               ),
             ),
-
             if (lista.isEmpty)
               const SliverFillRemaining(
                 hasScrollBody: false,
@@ -259,6 +282,157 @@ class _EstoquePageState extends State<EstoquePage> {
           ],
         ),
       ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _mostrarOpcoesEstoque,
+        backgroundColor: azulPrincipal,
+        foregroundColor: Colors.white,
+        tooltip: 'Opções de estoque',
+        child: const Icon(Icons.add, size: 30),
+      ),
+    );
+  }
+
+  // Menu de operações do estoque.
+  void _mostrarOpcoesEstoque() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(24),
+        ),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: borda,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Gerenciar estoque',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: textoPrincipal,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Escolha uma operação',
+                  style: TextStyle(
+                    color: textoSecundario,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                _opcaoEstoque(
+                  icone: Icons.add_box_outlined,
+                  titulo: 'Cadastrar produto',
+                  descricao: 'Adicionar um novo produto ao catálogo',
+                  cor: azulPrincipal,
+                  aoTocar: () {
+                    Navigator.pop(context);
+                    _abrirCadastroProduto();
+                  },
+                ),
+
+                _opcaoEstoque(
+                  icone: Icons.south_west,
+                  titulo: 'Registrar entrada',
+                  descricao: 'Adicionar quantidade ao estoque',
+                  cor: verdeStatus,
+                  aoTocar: () {
+                    Navigator.pop(context);
+                    _mostrarAvisoOpcaoEmDesenvolvimento(
+                      'Registro de entrada',
+                    );
+                  },
+                ),
+
+                _opcaoEstoque(
+                  icone: Icons.north_east,
+                  titulo: 'Registrar saída / dar baixa',
+                  descricao: 'Retirar quantidade e informar o motivo',
+                  cor: vermelhoStatus,
+                  aoTocar: () {
+                    Navigator.pop(context);
+                    _mostrarAvisoOpcaoEmDesenvolvimento(
+                      'Registro de saída',
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _mostrarAvisoOpcaoEmDesenvolvimento(String opcao) {
+    ScaffoldMessenger.of(this.context).showSnackBar(
+      SnackBar(
+        content: Text('$opcao: tela ainda não conectada.'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Widget _opcaoEstoque({
+    required IconData icone,
+    required String titulo,
+    required String descricao,
+    required Color cor,
+    required VoidCallback aoTocar,
+  }) {
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(
+        vertical: 5,
+        horizontal: 4,
+      ),
+      leading: Container(
+        width: 46,
+        height: 46,
+        decoration: BoxDecoration(
+          color: cor.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Icon(icone, color: cor, size: 25),
+      ),
+      title: Text(
+        titulo,
+        style: const TextStyle(
+          color: textoPrincipal,
+          fontWeight: FontWeight.w600,
+          fontSize: 14,
+        ),
+      ),
+      subtitle: Text(
+        descricao,
+        style: const TextStyle(
+          color: textoSecundario,
+          fontSize: 12,
+        ),
+      ),
+      trailing: const Icon(
+        Icons.chevron_right,
+        color: textoSecundario,
+      ),
+      onTap: aoTocar,
     );
   }
 
@@ -464,7 +638,6 @@ class _EstoquePageState extends State<EstoquePage> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Bolinha que representa o status.
           Padding(
             padding: const EdgeInsets.only(top: 6),
             child: Container(
@@ -476,9 +649,7 @@ class _EstoquePageState extends State<EstoquePage> {
               ),
             ),
           ),
-
           const SizedBox(width: 12),
-
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -491,10 +662,7 @@ class _EstoquePageState extends State<EstoquePage> {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-
                 const SizedBox(height: 7),
-
-                // Tag do tipo de produto.
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 9,
@@ -513,9 +681,7 @@ class _EstoquePageState extends State<EstoquePage> {
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 12),
-
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -536,10 +702,7 @@ class _EstoquePageState extends State<EstoquePage> {
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 10),
-
-                // Tag de status.
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 9,
@@ -561,9 +724,7 @@ class _EstoquePageState extends State<EstoquePage> {
               ],
             ),
           ),
-
           const SizedBox(width: 8),
-
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [

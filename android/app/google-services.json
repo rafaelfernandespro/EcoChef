@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "810455696987",
+    "project_id": "ecochef-43cb6",
+    "storage_bucket": "ecochef-43cb6.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:810455696987:android:c58f2d00937f4f7b6ee17e",
+        "android_client_info": {
+          "package_name": "com.example.ecochef"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyADF8ANO0dEbQGTQ9asnJ-ya_D8emvX_4Q"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

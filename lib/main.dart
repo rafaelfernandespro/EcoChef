@@ -1,4 +1,8 @@
+
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+
 import 'Views/auth/login-page.dart';
 import 'Views/auth/esqueceu-senha/enviar-codigo.dart';
 import 'Views/usuarios/cadastrar-usuario.dart';
@@ -7,8 +11,13 @@ import 'Views/home-page.dart';
 import 'Views/nav-bar.dart';
 import 'Views/estoque-page.dart';
 
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
 
-void main() {
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
   runApp(const EcoChefApp());
 }
 
@@ -20,9 +29,7 @@ class EcoChefApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'EcoChef',
-
       initialRoute: '/home',
-      
       routes: {
         '/': (context) => const LoginScreen(),
         '/esqueci-senha': (context) => ForgotPasswordPage(),
@@ -34,7 +41,6 @@ class EcoChefApp extends StatelessWidget {
         '/estoque-usuario': (context) =>
             const EstoquePage(),
       },
-
     );
   }
 }
