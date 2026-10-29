@@ -1,6 +1,6 @@
-
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+
 import 'firebase_options.dart';
 
 import 'Views/auth/login-page.dart';
@@ -29,15 +29,25 @@ class EcoChefApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'EcoChef',
-      initialRoute: '/home',
+
+      // O aplicativo começa pela tela de login.
+      initialRoute: '/',
+
       routes: {
         '/': (context) => const LoginScreen(),
-        '/esqueci-senha': (context) => ForgotPasswordPage(),
+
+        '/esqueci-senha': (context) =>
+            ForgotPasswordPage(),
+
         '/cadastro-usuarios': (context) =>
             const CadastroUsuariosScreen(),
+
         '/gerenciar-usuario': (context) =>
             const ListaFuncionariosScreen(),
-        '/home': (context) => const HomeNavigationPage(),
+
+        '/home': (context) =>
+            const HomeNavigationPage(),
+
         '/estoque-usuario': (context) =>
             const EstoquePage(),
       },
