@@ -1,5 +1,10 @@
 
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
+
+import '../../firebase_options.dart';
 
 class CadastroUsuariosScreen extends StatefulWidget {
   const CadastroUsuariosScreen({super.key});
@@ -26,9 +31,12 @@ class _CadastroUsuariosScreenState
       TextEditingController();
 
   String? tipoUsuario;
-  String statusUsuario = 'Ativo';
 
   bool ocultarSenha = true;
+  bool _carregando = false;
+
+  static const String _nomeAppSecundario =
+      'ecoChefCadastro';
 
   @override
   void dispose() {
@@ -39,7 +47,63 @@ class _CadastroUsuariosScreenState
     super.dispose();
   }
 
-  // Estilo padrão dos campos
+  // Cria ou recupera uma segunda aplicação Firebase.
+  // Ela será utilizada para cadastrar usuários sem encerrar
+  // a sessão do administrador na aplicação principal.
+  Future<FirebaseApp> _obterAppSecundario() async {
+    for (final app in Firebase.apps) {
+      if (app.name == _nomeAppSecundario) {
+        return app;
+      }
+    }
+
+    return Firebase.initializeApp(
+      name: _nomeAppSecundario,
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  }
+
+  // Exibe mensagens na tela.
+  void _mostrarMensagem(
+    String mensagem, {
+    Color cor = const Color(0xFF2563EB),
+  }) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(mensagem),
+          backgroundColor: cor,
+        ),
+      );
+  }
+
+  // Remove a conta do Authentication caso não seja
+  // possível salvar seu documento no Firestore.
+  Future<bool> _reverterCadastro(
+    User? usuario,
+    FirebaseAuth? authSecundario,
+  ) async {
+    bool conseguiuExcluir = true;
+
+    if (usuario != null) {
+      try {
+        await usuario.delete();
+      } catch (_) {
+        conseguiuExcluir = false;
+      }
+    }
+
+    try {
+      await authSecundario?.signOut();
+    } catch (_) {}
+
+    return conseguiuExcluir;
+  }
+
+  // Estilo padrão dos campos.
   InputDecoration estiloCampo({
     required String hint,
     required IconData icone,
@@ -77,16 +141,20 @@ class _CadastroUsuariosScreenState
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: Colors.red),
+        borderSide: const BorderSide(
+          color: Colors.red,
+        ),
       ),
       focusedErrorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: Colors.red),
+        borderSide: const BorderSide(
+          color: Colors.red,
+        ),
       ),
     );
   }
 
-  // Campo de texto com título
+  // Campo de texto com título.
   Widget campoTexto({
     required String titulo,
     required String hint,
@@ -113,6 +181,8 @@ class _CadastroUsuariosScreenState
           keyboardType: teclado,
           obscureText: senha && ocultarSenha,
           validator: validator,
+          autocorrect: false,
+          enableSuggestions: !senha,
           decoration: estiloCampo(
             hint: hint,
             icone: icone,
@@ -138,20 +208,253 @@ class _CadastroUsuariosScreenState
     );
   }
 
-  // Validar e cadastrar usuário
-  void cadastrarUsuario() {
+  // Cadastrar usuário no Authentication e no Firestore.
+  Future<void> cadastrarUsuario() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Formulário validado! Integre o cadastro ao banco de dados.',
-        ),
-        backgroundColor: Color(0xFF2563EB),
-      ),
-    );
+    if (tipoUsuario == null) {
+      return;
+    }
+
+    setState(() {
+      _carregando = true;
+    });
+
+    FirebaseAuth? authSecundario;
+    User? usuarioCriado;
+
+    bool documentoSalvo = false;
+
+    try {
+      // 1. Verifica se existe uma sessão autenticada.
+      final administrador = FirebaseAuth.instance.currentUser;
+
+      if (administrador == null) {
+        _mostrarMensagem(
+          'Você precisa estar autenticado para cadastrar usuários.',
+          cor: Colors.red,
+        );
+        return;
+      }
+
+      // 2. Confirma se o usuário atual é administrador.
+      final documentoAdmin = await FirebaseFirestore.instance
+          .collection('usuarios')
+          .doc(administrador.uid)
+          .get();
+
+      final dadosAdmin = documentoAdmin.data();
+
+      if (!documentoAdmin.exists ||
+          dadosAdmin?['tipoUsuario'] != 'admin' ||
+          dadosAdmin?['ativo'] != true) {
+        _mostrarMensagem(
+          'Somente administradores ativos podem cadastrar usuários.',
+          cor: Colors.red,
+        );
+        return;
+      }
+
+      // 3. Prepara os dados.
+      final nome = nomeController.text.trim();
+      final email = emailController.text.trim();
+      final senha = senhaController.text;
+
+      final cpf = cpfController.text.replaceAll(
+        RegExp(r'\D'),
+        '',
+      );
+
+      // 4. Verifica se o CPF já está cadastrado.
+      final cpfExistente = await FirebaseFirestore.instance
+          .collection('usuarios')
+          .where('cpf', isEqualTo: cpf)
+          .limit(1)
+          .get();
+
+      if (cpfExistente.docs.isNotEmpty) {
+        _mostrarMensagem(
+          'Este CPF já está cadastrado.',
+          cor: Colors.red,
+        );
+        return;
+      }
+
+      // 5. Obtém a aplicação Firebase secundária.
+      final appSecundario = await _obterAppSecundario();
+
+      authSecundario = FirebaseAuth.instanceFor(
+        app: appSecundario,
+      );
+
+      // 6. Cria a conta no Firebase Authentication.
+      final credencial =
+          await authSecundario!.createUserWithEmailAndPassword(
+        email: email,
+        password: senha,
+      );
+
+      usuarioCriado = credencial.user;
+
+      if (usuarioCriado == null) {
+        throw Exception(
+          'Não foi possível criar a conta do usuário.',
+        );
+      }
+
+      // 7. Salva os dados na coleção usuarios.
+      // O UID do Authentication será o ID do documento.
+      await FirebaseFirestore.instance
+          .collection('usuarios')
+          .doc(usuarioCriado!.uid)
+          .set({
+        'nomeCompleto': nome,
+        'email': email,
+        'cpf': cpf,
+        'tipoUsuario': tipoUsuario,
+        'ativo': true,
+        'criadoEm': FieldValue.serverTimestamp(),
+      });
+
+      documentoSalvo = true;
+
+      // 8. Encerra somente a sessão da aplicação secundária.
+      // A sessão do administrador permanece aberta.
+      try {
+        await authSecundario!.signOut();
+      } catch (_) {}
+
+      // 9. Limpa o formulário.
+      _formKey.currentState?.reset();
+
+      nomeController.clear();
+      emailController.clear();
+      senhaController.clear();
+      cpfController.clear();
+
+      setState(() {
+        tipoUsuario = null;
+        ocultarSenha = true;
+      });
+
+      _mostrarMensagem(
+        'Usuário cadastrado com sucesso!',
+        cor: const Color(0xFF16A34A),
+      );
+    } on FirebaseAuthException catch (e) {
+      // Se a conta foi criada, mas ocorreu algum problema
+      // antes de salvar o documento, tenta desfazer o cadastro.
+      bool contaRemovida = true;
+
+      if (!documentoSalvo && usuarioCriado != null) {
+        contaRemovida = await _reverterCadastro(
+          usuarioCriado,
+          authSecundario,
+        );
+      }
+
+      String mensagem;
+
+      switch (e.code) {
+        case 'email-already-in-use':
+          mensagem = 'Este e-mail já está cadastrado.';
+          break;
+
+        case 'invalid-email':
+          mensagem = 'O e-mail informado é inválido.';
+          break;
+
+        case 'weak-password':
+          mensagem = 'A senha é muito fraca.';
+          break;
+
+        case 'operation-not-allowed':
+          mensagem =
+              'O cadastro por e-mail e senha não está habilitado.';
+          break;
+
+        case 'too-many-requests':
+          mensagem =
+              'Muitas tentativas. Tente novamente mais tarde.';
+          break;
+
+        case 'network-request-failed':
+          mensagem = 'Verifique sua conexão com a internet.';
+          break;
+
+        default:
+          mensagem =
+              'Não foi possível criar a conta: ${e.message ?? e.code}';
+      }
+
+      if (!contaRemovida) {
+        mensagem +=
+            ' Verifique o Authentication: a conta pode ter sido criada sem o perfil no Firestore.';
+      }
+
+      _mostrarMensagem(
+        mensagem,
+        cor: Colors.red,
+      );
+    } on FirebaseException catch (e) {
+      bool contaRemovida = true;
+
+      if (!documentoSalvo && usuarioCriado != null) {
+        contaRemovida = await _reverterCadastro(
+          usuarioCriado,
+          authSecundario,
+        );
+      }
+
+      String mensagem;
+
+      if (e.code == 'permission-denied') {
+        mensagem =
+            'Sem permissão para consultar ou salvar os dados. Verifique as regras do Firestore.';
+      } else {
+        mensagem =
+            'Erro no Firebase: ${e.message ?? e.code}';
+      }
+
+      if (!contaRemovida) {
+        mensagem +=
+            ' A conta pode ter permanecido no Authentication. Confira antes de tentar novamente.';
+      }
+
+      _mostrarMensagem(
+        mensagem,
+        cor: Colors.red,
+      );
+    } catch (e) {
+      bool contaRemovida = true;
+
+      if (!documentoSalvo && usuarioCriado != null) {
+        contaRemovida = await _reverterCadastro(
+          usuarioCriado,
+          authSecundario,
+        );
+      }
+
+      String mensagem = 'Ocorreu um erro ao cadastrar o usuário.';
+
+      if (!contaRemovida) {
+        mensagem +=
+            ' A conta pode ter sido criada no Authentication sem o documento no Firestore.';
+      }
+
+      _mostrarMensagem(
+        mensagem,
+        cor: Colors.red,
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _carregando = false;
+        });
+      }
+    }
   }
 
   @override
@@ -281,6 +584,7 @@ class _CadastroUsuariosScreenState
                                 value.trim().isEmpty) {
                               return 'Informe o nome do usuário';
                             }
+
                             return null;
                           },
                         ),
@@ -385,30 +689,29 @@ class _CadastroUsuariosScreenState
                           ),
                           items: const [
                             DropdownMenuItem(
-                              value: 'Admin',
+                              value: 'admin',
                               child: Text('Admin'),
                             ),
                             DropdownMenuItem(
-                              value: 'Funcionário',
+                              value: 'funcionario',
                               child: Text('Funcionário'),
                             ),
                           ],
-                          onChanged: (value) {
-                            setState(() {
-                              tipoUsuario = value;
-                            });
-                          },
+                          onChanged: _carregando
+                              ? null
+                              : (value) {
+                                  setState(() {
+                                    tipoUsuario = value;
+                                  });
+                                },
                           validator: (value) {
                             if (value == null) {
                               return 'Selecione o tipo de usuário';
                             }
+
                             return null;
                           },
                         ),
-
-                        const SizedBox(height: 18),
-
-                        // STATUS
 
                         const SizedBox(height: 28),
 
@@ -417,24 +720,37 @@ class _CadastroUsuariosScreenState
                           width: double.infinity,
                           height: 48,
                           child: ElevatedButton(
-                            onPressed: cadastrarUsuario,
+                            onPressed: _carregando
+                                ? null
+                                : cadastrarUsuario,
                             style: ElevatedButton.styleFrom(
                               backgroundColor:
                                   const Color(0xFF2563EB),
                               foregroundColor: Colors.white,
+                              disabledBackgroundColor:
+                                  const Color(0xFF93B4F5),
                               elevation: 0,
                               shape: RoundedRectangleBorder(
                                 borderRadius:
                                     BorderRadius.circular(8),
                               ),
                             ),
-                            child: const Text(
-                              'Cadastrar usuário',
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
+                            child: _carregando
+                                ? const SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Text(
+                                    'Cadastrar usuário',
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
                           ),
                         ),
 
@@ -445,20 +761,21 @@ class _CadastroUsuariosScreenState
                           width: double.infinity,
                           height: 48,
                           child: OutlinedButton(
-                            onPressed: () {
-                              _formKey.currentState?.reset();
+                            onPressed: _carregando
+                                ? null
+                                : () {
+                                    _formKey.currentState?.reset();
 
-                              nomeController.clear();
-                              emailController.clear();
-                              senhaController.clear();
-                              cpfController.clear();
+                                    nomeController.clear();
+                                    emailController.clear();
+                                    senhaController.clear();
+                                    cpfController.clear();
 
-                              setState(() {
-                                tipoUsuario = null;
-                                statusUsuario = 'Ativo';
-                                ocultarSenha = true;
-                              });
-                            },
+                                    setState(() {
+                                      tipoUsuario = null;
+                                      ocultarSenha = true;
+                                    });
+                                  },
                             style: OutlinedButton.styleFrom(
                               foregroundColor:
                                   const Color(0xFF2563EB),
