@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'widgets/menu-perfil.dart';
 
 const azulPrincipal = Color(0xFF2563EB);
 const azulEscuro = Color(0xFF1E3A8A);
@@ -33,7 +36,7 @@ class HomePage extends StatelessWidget {
         child: CustomScrollView(
           slivers: [
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
                   _cabecalho(context),
@@ -157,61 +160,64 @@ class HomePage extends StatelessWidget {
     );
   }
 
-  Widget _cabecalho(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 46,
-          height: 46,
-          decoration: BoxDecoration(
-            color: azulPrincipal,
-            borderRadius: BorderRadius.circular(13),
-          ),
-          child: const Icon(
-            Icons.restaurant_menu,
-            color: Colors.white,
-            size: 27,
-          ),
-        ),
-        const SizedBox(width: 12),
-        const Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'EcoChef',
-                style: TextStyle(
-                  fontSize: 21,
-                  fontWeight: FontWeight.bold,
-                  color: azulEscuro,
-                ),
-              ),
-              Text(
-                'Gestão inteligente',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: textoSecundario,
-                ),
-              ),
-            ],
-          ),
-        ),
+  
+Widget _cabecalho(BuildContext context) {
+  final usuario = FirebaseAuth.instance.currentUser;
 
-        // Ícone de perfil no canto superior direito
-        IconButton(
-          tooltip: 'Perfil',
-          onPressed: () {
-            // TODO: Navegar para a tela de perfil.
-          },
-          icon: const Icon(
-            Icons.account_circle_outlined,
-            size: 31,
-            color: azulEscuro,
+  if (usuario == null) {
+    return const Row(
+      children: [
+        Expanded(
+          child: Text(
+            'Olá!',
+            style: TextStyle(
+              fontSize: 21,
+              fontWeight: FontWeight.bold,
+              color: azulEscuro,
+            ),
           ),
         ),
+        MenuPerfil(),
       ],
     );
   }
+
+  return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+    stream: FirebaseFirestore.instance
+        .collection('usuarios')
+        .doc(usuario.uid)
+        .snapshots(),
+    builder: (context, snapshot) {
+      final nomeCompleto =
+          snapshot.data?.data()?['nomeCompleto']?.toString() ??
+          usuario.displayName ??
+          '';
+
+      final primeiroNome = nomeCompleto.trim().isEmpty
+          ? 'usuário'
+          : nomeCompleto.trim().split(RegExp(r'\s+')).first;
+
+      return Row(
+        children: [
+          Expanded(
+            child: Text(
+              'Olá, $primeiroNome!',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 21,
+                fontWeight: FontWeight.bold,
+                color: azulEscuro,
+              ),
+            ),
+          ),
+          const MenuPerfil(),
+        ],
+      );
+    },
+  );
+}
+
 
   Widget _kpi({
     required String titulo,

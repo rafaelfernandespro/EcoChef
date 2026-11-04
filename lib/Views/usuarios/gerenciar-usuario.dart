@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../widgets/menu-perfil.dart';
 
 class ListaFuncionariosScreen extends StatefulWidget {
   const ListaFuncionariosScreen({super.key});
@@ -250,6 +251,8 @@ class _ListaFuncionariosScreenState
     String tipoSelecionado =
         normalizarTipo(dados['tipoUsuario']?.toString());
 
+    final nomeOriginal = nomeController.text.trim();
+    final tipoOriginal = tipoSelecionado;
     final formKey = GlobalKey<FormState>();
 
     try {
@@ -258,6 +261,9 @@ class _ListaFuncionariosScreenState
         builder: (dialogContext) {
           return StatefulBuilder(
             builder: (contexto, atualizarDialogo) {
+
+              final houveAlteracao = nomeController.text.trim() != nomeOriginal || tipoSelecionado != tipoOriginal;
+              
               return AlertDialog(
                 title: const Text('Editar usuário'),
                 content: SizedBox(
@@ -271,6 +277,9 @@ class _ListaFuncionariosScreenState
                           // NOME
                           TextFormField(
                             controller: nomeController,
+                            onChanged: (valor) {
+                              atualizarDialogo(() {});
+                            },
                             decoration: const InputDecoration(
                               labelText: 'Nome completo',
                               prefixIcon: Icon(
@@ -310,30 +319,15 @@ class _ListaFuncionariosScreenState
                           // CPF
                           TextFormField(
                             controller: cpfController,
-                            keyboardType: TextInputType.number,
+                            readOnly: true,
+                            enableInteractiveSelection: false,
+                            showCursor: false,
                             decoration: const InputDecoration(
                               labelText: 'CPF',
                               prefixIcon: Icon(
                                 Icons.badge_outlined,
                               ),
                             ),
-                            validator: (valor) {
-                              if (valor == null ||
-                                  valor.trim().isEmpty) {
-                                return 'Informe o CPF.';
-                              }
-
-                              final cpf = valor.replaceAll(
-                                RegExp(r'\D'),
-                                '',
-                              );
-
-                              if (cpf.length != 11) {
-                                return 'O CPF deve conter 11 números.';
-                              }
-
-                              return null;
-                            },
                           ),
 
                           const SizedBox(height: 16),
@@ -387,14 +381,18 @@ class _ListaFuncionariosScreenState
                     child: const Text('Cancelar'),
                   ),
                   ElevatedButton(
-                    onPressed: () {
-                      if (formKey.currentState!.validate()) {
-                        Navigator.pop(dialogContext, true);
-                      }
-                    },
+                    onPressed: houveAlteracao
+                        ? () {
+                            if (formKey.currentState!.validate()) {
+                              Navigator.pop(dialogContext, true);
+                            }
+                          }
+                        : null,
                     child: const Text('Salvar alterações'),
                   ),
                 ],
+
+                
               );
             },
           );
@@ -417,33 +415,9 @@ class _ListaFuncionariosScreenState
         return;
       }
 
-      final cpfNovo = cpfController.text.replaceAll(
-        RegExp(r'\D'),
-        '',
-      );
-
-      // Verifica se outro usuário já utiliza esse CPF.
-      final cpfExistente = await usuariosRef
-          .where('cpf', isEqualTo: cpfNovo)
-          .limit(2)
-          .get();
-
-      final cpfDuplicado = cpfExistente.docs.any(
-        (doc) => doc.id != documento.id,
-      );
-
-      if (cpfDuplicado) {
-        mostrarMensagem(
-          'Este CPF já está cadastrado para outro usuário.',
-          erro: true,
-        );
-        return;
-      }
-
       // Atualiza os dados no Firestore.
       await usuariosRef.doc(documento.id).update({
         'nomeCompleto': nomeController.text.trim(),
-        'cpf': cpfNovo,
         'tipoUsuario': tipoSelecionado,
       });
 
@@ -549,21 +523,25 @@ class _ListaFuncionariosScreenState
             final lista = filtrarUsuarios(documentos);
 
             return SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // CABEÇALHO - SOMENTE O TÍTULO
-                  const Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'Usuários',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1E3A8A),
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'Usuários',
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1E293B),
+                          ),
+                        ),
                       ),
-                    ),
+                      const MenuPerfil(),
+                    ],
                   ),
 
                   const SizedBox(height: 4),

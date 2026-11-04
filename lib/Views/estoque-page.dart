@@ -1,6 +1,7 @@
 
 import 'package:flutter/material.dart';
 import 'cadastrar-produto.dart';
+import 'widgets/menu-perfil.dart';
 
 
 const azulPrincipal = Color(0xFF2563EB);
@@ -189,24 +190,7 @@ class _EstoquePageState extends State<EstoquePage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _cabecalho(context),
-                    const SizedBox(height: 28),
-                    const Text(
-                      'Estoque',
-                      style: TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.bold,
-                        color: textoPrincipal,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      'Consulte os produtos e acompanhe suas quantidades.',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: textoSecundario,
-                      ),
-                    ),
+                    _cabecalho(),
                     const SizedBox(height: 22),
                     _campoPesquisa(),
                     const SizedBox(height: 12),
@@ -242,7 +226,7 @@ class _EstoquePageState extends State<EstoquePage> {
                 hasScrollBody: false,
                 child: Center(
                   child: Padding(
-                    padding: EdgeInsets.all(24),
+                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -266,7 +250,7 @@ class _EstoquePageState extends State<EstoquePage> {
               )
             else
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
                 sliver: SliverList(
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
@@ -436,58 +420,39 @@ class _EstoquePageState extends State<EstoquePage> {
     );
   }
 
-  Widget _cabecalho(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: azulPrincipal,
-            borderRadius: BorderRadius.circular(13),
-          ),
-          child: const Icon(
-            Icons.restaurant_menu,
-            color: Colors.white,
-            size: 25,
-          ),
-        ),
-        const SizedBox(width: 12),
-        const Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'EcoChef',
-                style: TextStyle(
-                  color: azulEscuro,
-                  fontSize: 21,
-                  fontWeight: FontWeight.bold,
-                ),
+  
+Widget _cabecalho() {
+  return Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Estoque',
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.bold,
+                color: textoPrincipal,
               ),
-              Text(
-                'Gestão inteligente',
-                style: TextStyle(
-                  color: textoSecundario,
-                  fontSize: 12,
-                ),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Consulte os produtos e acompanhe suas quantidades.',
+              style: TextStyle(
+                fontSize: 14,
+                color: textoSecundario,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
-        IconButton(
-          onPressed: () {
-            // TODO: abrir perfil do usuário.
-          },
-          icon: const Icon(
-            Icons.account_circle_outlined,
-            color: azulEscuro,
-            size: 30,
-          ),
-        ),
-      ],
-    );
-  }
+      ),
+      const MenuPerfil(),
+    ],
+  );
+}
+
 
   Widget _campoPesquisa() {
     return TextField(
