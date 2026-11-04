@@ -1,5 +1,6 @@
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -35,8 +36,7 @@ class _CadastroUsuariosScreenState
   bool ocultarSenha = true;
   bool _carregando = false;
 
-  static const String _nomeAppSecundario =
-      'ecoChefCadastro';
+  static const String _nomeAppSecundario = 'ecoChefCadastro';
 
   @override
   void dispose() {
@@ -48,7 +48,7 @@ class _CadastroUsuariosScreenState
   }
 
   // Cria ou recupera uma segunda aplicação Firebase.
-  // Ela será utilizada para cadastrar usuários sem encerrar
+  // Ela permite cadastrar usuários sem encerrar
   // a sessão do administrador na aplicação principal.
   Future<FirebaseApp> _obterAppSecundario() async {
     for (final app in Firebase.apps) {
@@ -61,6 +61,44 @@ class _CadastroUsuariosScreenState
       name: _nomeAppSecundario,
       options: DefaultFirebaseOptions.currentPlatform,
     );
+  }
+
+  // Valida o CPF, incluindo os dígitos verificadores.
+  bool _cpfValido(String cpf) {
+    final numeros = cpf.replaceAll(RegExp(r'\D'), '');
+
+    if (numeros.length != 11) return false;
+
+    // Impede CPFs com todos os números iguais.
+    if (RegExp(r'^(\d)\1{10}$').hasMatch(numeros)) {
+      return false;
+    }
+
+    final digitos = numeros.split('').map(int.parse).toList();
+
+    // Primeiro dígito verificador.
+    int soma = 0;
+
+    for (int i = 0; i < 9; i++) {
+      soma += digitos[i] * (10 - i);
+    }
+
+    int resto = (soma * 10) % 11;
+    if (resto == 10) resto = 0;
+
+    if (resto != digitos[9]) return false;
+
+    // Segundo dígito verificador.
+    soma = 0;
+
+    for (int i = 0; i < 10; i++) {
+      soma += digitos[i] * (11 - i);
+    }
+
+    resto = (soma * 10) % 11;
+    if (resto == 10) resto = 0;
+
+    return resto == digitos[10];
   }
 
   // Exibe mensagens na tela.
@@ -183,6 +221,15 @@ class _CadastroUsuariosScreenState
           validator: validator,
           autocorrect: false,
           enableSuggestions: !senha,
+
+          // Limita o CPF a 11 números.
+          inputFormatters: titulo == 'CPF'
+              ? [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(11),
+                ]
+              : null,
+
           decoration: estiloCampo(
             hint: hint,
             icone: icone,
@@ -210,6 +257,8 @@ class _CadastroUsuariosScreenState
 
   // Cadastrar usuário no Authentication e no Firestore.
   Future<void> cadastrarUsuario() async {
+    if (_carregando) return;
+
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -344,8 +393,6 @@ class _CadastroUsuariosScreenState
         cor: const Color(0xFF16A34A),
       );
     } on FirebaseAuthException catch (e) {
-      // Se a conta foi criada, mas ocorreu algum problema
-      // antes de salvar o documento, tenta desfazer o cadastro.
       bool contaRemovida = true;
 
       if (!documentoSalvo && usuarioCriado != null) {
@@ -437,7 +484,8 @@ class _CadastroUsuariosScreenState
         );
       }
 
-      String mensagem = 'Ocorreu um erro ao cadastrar o usuário.';
+      String mensagem =
+          'Ocorreu um erro ao cadastrar o usuário.';
 
       if (!contaRemovida) {
         mensagem +=
@@ -621,7 +669,7 @@ class _CadastroUsuariosScreenState
                         // CPF
                         campoTexto(
                           titulo: 'CPF',
-                          hint: 'Digite o CPF',
+                          hint: 'Digite o seu CPF',
                           icone: Icons.badge_outlined,
                           controller: cpfController,
                           teclado: TextInputType.number,
@@ -638,6 +686,10 @@ class _CadastroUsuariosScreenState
 
                             if (cpf.length != 11) {
                               return 'O CPF deve conter 11 números';
+                            }
+
+                            if (!_cpfValido(cpf)) {
+                              return 'Informe um CPF válido';
                             }
 
                             return null;
@@ -682,7 +734,7 @@ class _CadastroUsuariosScreenState
                         const SizedBox(height: 8),
 
                         DropdownButtonFormField<String>(
-                          value: tipoUsuario,
+                          initialValue: tipoUsuario,
                           decoration: estiloCampo(
                             hint: 'Selecione o tipo',
                             icone: Icons.manage_accounts_outlined,

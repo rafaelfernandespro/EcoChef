@@ -1,5 +1,6 @@
+
 import 'package:flutter/material.dart';
-import 'estoque-page.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class CadastrarProdutoPage extends StatefulWidget {
   const CadastrarProdutoPage({super.key});
@@ -9,8 +10,7 @@ class CadastrarProdutoPage extends StatefulWidget {
       _CadastrarProdutoPageState();
 }
 
-class _CadastrarProdutoPageState
-    extends State<CadastrarProdutoPage> {
+class _CadastrarProdutoPageState extends State<CadastrarProdutoPage> {
   final _formKey = GlobalKey<FormState>();
 
   final _nomeController = TextEditingController();
@@ -18,6 +18,7 @@ class _CadastrarProdutoPageState
 
   String? _categoria;
   String _unidade = 'kg';
+  bool _salvando = false;
 
   final List<String> _categorias = [
     'Grãos',
@@ -44,28 +45,120 @@ class _CadastrarProdutoPageState
     super.dispose();
   }
 
-  void _cadastrarProduto() {
+  // Padroniza o nome para comparar sem diferenças de
+  // maiúsculas, minúsculas ou espaços extras.
+  String _normalizarNome(String nome) {
+    return nome
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  // Verifica se já existe um produto ativo com esse nome.
+  Future<bool> _produtoJaCadastrado(String nomeNormalizado) async {
+    final consulta = await FirebaseFirestore.instance
+        .collection('produtos')
+        .get();
+
+    for (final documento in consulta.docs) {
+      final dados = documento.data();
+
+      // Produtos desativados não bloqueiam um novo cadastro.
+      if (dados['ativo'] == false) continue;
+
+      // Também verifica os documentos antigos que ainda
+      // não possuem o campo nomeNormalizado.
+      final nomeExistente = dados['nomeNormalizado'] ??
+          _normalizarNome(dados['nome']?.toString() ?? '');
+
+      if (_normalizarNome(nomeExistente.toString()) ==
+          nomeNormalizado) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  Future<void> _cadastrarProduto() async {
+    if (_salvando) return;
+
     if (!_formKey.currentState!.validate()) return;
 
+    setState(() => _salvando = true);
+
     final nome = _nomeController.text.trim();
+    final nomeNormalizado = _normalizarNome(nome);
 
     final estoqueMinimo = double.parse(
-      _estoqueMinimoController.text
-          .trim()
-          .replaceAll(',', '.'),
+      _estoqueMinimoController.text.trim().replaceAll(',', '.'),
     );
 
-    final novoProduto = ProdutoEstoque(
-      nome: nome,
-      quantidade: 0,
-      tipo: _categoria!,
-      validade: null,
-      status: estoqueMinimo > 0
-          ? 'Abaixo do mínimo'
-          : 'Disponível',
-    );
+    try {
+      // Verifica a duplicidade antes de salvar.
+      final duplicado =
+          await _produtoJaCadastrado(nomeNormalizado);
 
-    Navigator.pop(context, novoProduto);
+      if (!mounted) return;
+
+      if (duplicado) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Já existe um produto ativo com esse nome.',
+            ),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      await FirebaseFirestore.instance.collection('produtos').add({
+        'nome': nome,
+        'nomeNormalizado': nomeNormalizado,
+        'categoria': _categoria,
+        'unidade': _unidade,
+        'estoqueMinimo': estoqueMinimo,
+        'ativo': true,
+        'criadoEm': FieldValue.serverTimestamp(),
+      });
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Produto cadastrado com sucesso!'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+
+      Navigator.pop(context, true);
+    } on FirebaseException catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Erro ao cadastrar produto: ${e.message ?? e.code}',
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Ocorreu um erro inesperado: $e'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _salvando = false);
+      }
+    }
   }
 
   @override
@@ -139,15 +232,13 @@ class _CadastrarProdutoPageState
               const SizedBox(height: 8),
               TextFormField(
                 controller: _nomeController,
-                textCapitalization:
-                    TextCapitalization.sentences,
+                textCapitalization: TextCapitalization.sentences,
                 decoration: _decoracao(
                   'Ex.: Arroz, Tomate, Leite...',
                   borda,
                 ),
                 validator: (valor) {
-                  if (valor == null ||
-                      valor.trim().isEmpty) {
+                  if (valor == null || valor.trim().isEmpty) {
                     return 'Informe o nome do produto.';
                   }
                   return null;
@@ -164,7 +255,7 @@ class _CadastrarProdutoPageState
               ),
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
-                value: _categoria,
+                initialValue: _categoria,
                 isExpanded: true,
                 decoration: _decoracao(
                   'Selecione uma categoria',
@@ -176,9 +267,11 @@ class _CadastrarProdutoPageState
                     child: Text(categoria),
                   );
                 }).toList(),
-                onChanged: (valor) {
-                  setState(() => _categoria = valor);
-                },
+                onChanged: _salvando
+                    ? null
+                    : (valor) {
+                        setState(() => _categoria = valor);
+                      },
                 validator: (valor) {
                   if (valor == null) {
                     return 'Selecione uma categoria.';
@@ -197,7 +290,7 @@ class _CadastrarProdutoPageState
               ),
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
-                value: _unidade,
+                initialValue: _unidade,
                 isExpanded: true,
                 decoration: _decoracao(
                   'Selecione a unidade',
@@ -209,11 +302,13 @@ class _CadastrarProdutoPageState
                     child: Text(unidade),
                   );
                 }).toList(),
-                onChanged: (valor) {
-                  if (valor != null) {
-                    setState(() => _unidade = valor);
-                  }
-                },
+                onChanged: _salvando
+                    ? null
+                    : (valor) {
+                        if (valor != null) {
+                          setState(() => _unidade = valor);
+                        }
+                      },
               ),
               const SizedBox(height: 20),
 
@@ -227,8 +322,7 @@ class _CadastrarProdutoPageState
               const SizedBox(height: 8),
               TextFormField(
                 controller: _estoqueMinimoController,
-                keyboardType:
-                    const TextInputType.numberWithOptions(
+                keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
                 decoration: _decoracao(
@@ -239,8 +333,7 @@ class _CadastrarProdutoPageState
                       'Quantidade mínima desejada em $_unidade.',
                 ),
                 validator: (valor) {
-                  if (valor == null ||
-                      valor.trim().isEmpty) {
+                  if (valor == null || valor.trim().isEmpty) {
                     return 'Informe o estoque mínimo.';
                   }
 
@@ -262,11 +355,20 @@ class _CadastrarProdutoPageState
               SizedBox(
                 height: 52,
                 child: ElevatedButton.icon(
-                  onPressed: _cadastrarProduto,
-                  icon: const Icon(Icons.check),
-                  label: const Text(
-                    'Cadastrar produto',
-                    style: TextStyle(
+                  onPressed: _salvando ? null : _cadastrarProduto,
+                  icon: _salvando
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.check),
+                  label: Text(
+                    _salvando ? 'Salvando...' : 'Cadastrar produto',
+                    style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 15,
                     ),
@@ -275,8 +377,7 @@ class _CadastrarProdutoPageState
                     backgroundColor: azul,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(14),
                     ),
                   ),
                 ),
@@ -286,13 +387,14 @@ class _CadastrarProdutoPageState
               SizedBox(
                 height: 48,
                 child: OutlinedButton(
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: _salvando
+                      ? null
+                      : () => Navigator.pop(context),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: azulEscuro,
                     side: const BorderSide(color: borda),
                     shape: RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(14),
                     ),
                   ),
                   child: const Text('Cancelar'),
@@ -305,10 +407,7 @@ class _CadastrarProdutoPageState
     );
   }
 
-  InputDecoration _decoracao(
-    String dica,
-    Color borda,
-  ) {
+  InputDecoration _decoracao(String dica, Color borda) {
     return InputDecoration(
       hintText: dica,
       filled: true,
