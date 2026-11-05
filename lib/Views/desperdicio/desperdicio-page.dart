@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import 'registrar-desperdicio.dart';
 import 'historico-desperdicio.dart';
+import '../widgets/menu-perfil.dart';
 
 const azulPrincipal = Color(0xFF2563EB);
 const azulEscuro = Color(0xFF1E3A8A);
@@ -24,13 +25,20 @@ class DesperdicioPage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Desperdício',
-                style: TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                  color: textoPrincipal,
-                ),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Desperdício',
+                      style: TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.bold,
+                        color: textoPrincipal,
+                      ),
+                    ),
+                  ),
+                  const MenuPerfil(),
+                ],
               ),
               const SizedBox(height: 6),
               const Text(

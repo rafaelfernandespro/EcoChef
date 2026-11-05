@@ -191,12 +191,9 @@ class _RegistrarSaidaEstoquePageState
 }
 
   // Soma as quantidades de uma coleção para determinado produto.
-  Future<double> _somarColecao(
-    String colecao,
-    String produtoId,
-  ) async {
+  Future<double> _calcularEstoque(String produtoId) async {
     final consulta = await FirebaseFirestore.instance
-        .collection(colecao)
+        .collection('entradasEstoque')
         .where('produtoId', isEqualTo: produtoId)
         .get();
 
@@ -205,41 +202,11 @@ class _RegistrarSaidaEstoquePageState
     for (final doc in consulta.docs) {
       final dados = doc.data();
 
-      // Desperdícios que já foram descontados por uma saída
-      // não podem gerar uma segunda baixa.
-      if (colecao == 'desperdicios' &&
-          dados.containsKey('afetaEstoque') &&
-          dados['afetaEstoque'] != true) {
-        continue;
-      }
-
-      final quantidade = dados['quantidade'];
-
-      if (quantidade is num) {
-        total += quantidade.toDouble();
-      } else if (quantidade != null) {
-        total +=
-            double.tryParse(quantidade.toString().replaceAll(',', '.')) ??
-                0;
-      }
+      total +=
+          (dados['quantidadeDisponivel'] as num?)?.toDouble() ?? 0;
     }
 
     return total;
-  }
-
-  // Calcula o estoque real: entradas - saídas - desperdícios.
-  Future<double> _calcularEstoque(String produtoId) async {
-    final resultados = await Future.wait([
-      _somarColecao('entradasEstoque', produtoId),
-      _somarColecao('saidasEstoque', produtoId),
-      _somarColecao('desperdicios', produtoId),
-    ]);
-
-    final entradas = resultados[0];
-    final saidas = resultados[1];
-    final desperdicios = resultados[2];
-
-    return entradas - saidas - desperdicios;
   }
 
   Future<void> _atualizarEstoqueDisponivel(String produtoId) async {
@@ -278,18 +245,14 @@ class _RegistrarSaidaEstoquePageState
         .replaceAll(RegExp(r'\.$'), '');
   }
 
+  
   Future<void> _registrarSaida() async {
     if (carregando) return;
 
     if (!_formKey.currentState!.validate()) return;
 
-    if (produtoSelecionado == null) {
-      _mensagem('Selecione um produto.');
-      return;
-    }
-
-    if (motivoSelecionado == null) {
-      _mensagem('Selecione o motivo da saída.');
+    if (produtoSelecionado == null || motivoSelecionado == null) {
+      _mensagem('Preencha todos os campos obrigatórios.');
       return;
     }
 
@@ -302,52 +265,172 @@ class _RegistrarSaidaEstoquePageState
       return;
     }
 
+    // Guardar os valores antes da transação.
+    final produtoId = produtoSelecionado!;
+    final motivo = motivoSelecionado!;
+    final observacao = observacaoController.text.trim();
+
     setState(() {
       carregando = true;
     });
 
     try {
-      final produto = await FirebaseFirestore.instance
+      final firestore = FirebaseFirestore.instance;
+
+      final produtoRef = firestore
           .collection('produtos')
-          .doc(produtoSelecionado)
+          .doc(produtoId);
+
+      final saidaRef = firestore
+          .collection('saidasEstoque')
+          .doc();
+
+      // A consulta dos lotes deve acontecer FORA da transação.
+      final consultaLotes = await firestore
+          .collection('entradasEstoque')
+          .where('produtoId', isEqualTo: produtoId)
           .get();
 
-      if (!produto.exists || produto.data()?['ativo'] == false) {
-        _mensagem('O produto selecionado não está disponível.');
-        return;
-      }
+      // Guardar as referências dos lotes encontrados.
+      final referenciasLotes = consultaLotes.docs
+          .map((doc) => doc.reference)
+          .toList();
 
-      final dadosProduto = produto.data()!;
+      await firestore.runTransaction((transaction) async {
+        // Primeiro, realizar todas as leituras.
+        final produtoDoc = await transaction.get(produtoRef);
 
-      // Consulta novamente antes de registrar para evitar
-      // utilizar um valor de estoque desatualizado.
-      final disponivel = await _calcularEstoque(produto.id);
+        if (!produtoDoc.exists || produtoDoc.data()?['ativo'] != true) {
+          throw Exception('O produto não está mais disponível.');
+        }
 
-      if (quantidade > disponivel) {
-        _mensagem(
-          'Estoque insuficiente. Disponível: '
-          '${_formatarQuantidade(disponivel)} $unidadeProduto.',
+        // Ler novamente cada lote dentro da transação.
+        final documentosLotes = <DocumentSnapshot<Map<String, dynamic>>>[];
+
+        for (final referencia in referenciasLotes) {
+          final loteDoc = await transaction.get(referencia);
+
+          if (loteDoc.exists) {
+            documentosLotes.add(loteDoc);
+          }
+        }
+
+        // Filtrar lotes com saldo e dentro da validade.
+        final hoje = DateTime.now();
+
+        final dataHoje = DateTime(
+          hoje.year,
+          hoje.month,
+          hoje.day,
         );
 
-        if (mounted) {
-          setState(() {
-            estoqueDisponivel = disponivel;
+        final lotes = documentosLotes.where((doc) {
+          final dados = doc.data()!;
+
+          final disponivel =
+              (dados['quantidadeDisponivel'] as num?)?.toDouble() ?? 0;
+
+          if (disponivel <= 0) return false;
+
+          final validade = dados['validade'];
+
+          if (validade is Timestamp) {
+            final data = validade.toDate();
+
+            final dataValidade = DateTime(
+              data.year,
+              data.month,
+              data.day,
+            );
+
+            if (dataValidade.isBefore(dataHoje)) {
+              return false;
+            }
+          }
+
+          return true;
+        }).toList();
+
+        // FEFO: lotes com vencimento mais próximo primeiro.
+        lotes.sort((a, b) {
+          final validadeA = a.data()?['validade'];
+          final validadeB = b.data()?['validade'];
+
+          if (validadeA is! Timestamp && validadeB is! Timestamp) {
+            return 0;
+          }
+
+          if (validadeA is! Timestamp) return 1;
+          if (validadeB is! Timestamp) return -1;
+
+          return validadeA.compareTo(validadeB);
+        });
+
+        double restante = quantidade;
+
+        final lotesUtilizados = <Map<String, dynamic>>[];
+
+        // Distribuir a saída entre os lotes.
+        for (final lote in lotes) {
+          if (restante <= 0.000001) break;
+
+          final dados = lote.data()!;
+
+          final disponivel =
+              (dados['quantidadeDisponivel'] as num?)?.toDouble() ?? 0;
+
+          final retirar = restante < disponivel
+              ? restante
+              : disponivel;
+
+          lotesUtilizados.add({
+            'entradaId': lote.id,
+            'quantidade': retirar,
+          });
+
+          restante -= retirar;
+        }
+
+        // Verificar se existe estoque suficiente.
+        if (restante > 0.000001) {
+          throw EstoqueInsuficienteException(
+            'Estoque insuficiente dentro da validade. '
+            'Disponível: ${_formatarQuantidade(quantidade - restante)} '
+            '$unidadeProduto.',
+          );
+        }
+
+        // Todas as leituras já foram feitas.
+        // Agora podemos atualizar os lotes.
+        for (final utilizado in lotesUtilizados) {
+          final entradaId = utilizado['entradaId'] as String;
+
+          final lote = lotes.firstWhere(
+            (doc) => doc.id == entradaId,
+          );
+
+          final disponivel =
+              (lote.data()!['quantidadeDisponivel'] as num).toDouble();
+
+          final retirar = utilizado['quantidade'] as double;
+
+          transaction.update(lote.reference, {
+            'quantidadeDisponivel': disponivel - retirar,
           });
         }
-        return;
-      }
 
-      await FirebaseFirestore.instance
-          .collection('saidasEstoque')
-          .add({
-        'produtoId': produto.id,
-        'nomeProduto': dadosProduto['nome'] ?? '',
-        'categoria': dadosProduto['categoria'] ?? 'Outros',
-        'unidade': dadosProduto['unidade'] ?? 'unidade',
-        'quantidade': quantidade,
-        'motivo': motivoSelecionado,
-        'observacao': observacaoController.text.trim(),
-        'dataSaida': FieldValue.serverTimestamp(),
+        // Registrar a saída.
+        transaction.set(saidaRef, {
+          'produtoId': produtoDoc.id,
+          'nomeProduto': produtoDoc.data()?['nome'] ?? '',
+          'categoria': produtoDoc.data()?['categoria'] ?? 'Outros',
+          'unidade': produtoDoc.data()?['unidade'] ?? 'unidade',
+          'quantidade': quantidade,
+          'motivo': motivo,
+          'observacao': observacao,
+          'dataSaida': FieldValue.serverTimestamp(),
+          'lotesUtilizados': lotesUtilizados,
+        });
       });
 
       if (!mounted) return;
@@ -361,12 +444,12 @@ class _RegistrarSaidaEstoquePageState
       );
 
       Navigator.pop(context, true);
+    } on EstoqueInsuficienteException catch (e) {
+      _mensagem(e.mensagem);
     } on FirebaseException catch (e) {
-      _mensagem(
-        'Erro ao salvar no Firebase: ${e.message ?? e.code}',
-      );
+      _mensagem('Erro ao salvar no Firebase: ${e.message ?? e.code}');
     } catch (e) {
-      _mensagem('Não foi possível registrar a saída.');
+      _mensagem('Ocorreu um erro inesperado ao registrar a saída.');
     } finally {
       if (mounted) {
         setState(() {
@@ -375,6 +458,7 @@ class _RegistrarSaidaEstoquePageState
       }
     }
   }
+
 
   void _mensagem(String texto) {
     if (!mounted) return;
@@ -739,4 +823,10 @@ class _RegistrarSaidaEstoquePageState
       ),
     );
   }
+}
+
+class EstoqueInsuficienteException implements Exception {
+  final String mensagem;
+
+  EstoqueInsuficienteException(this.mensagem);
 }

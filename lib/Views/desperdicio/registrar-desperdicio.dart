@@ -26,6 +26,7 @@ class _RegistrarDesperdicioPageState
   final observacaoController = TextEditingController();
 
   String? produtoSelecionado;
+  String? loteSelecionado;
   String? motivoSelecionado;
   _SaidaDisponivel? saidaSelecionada;
 
@@ -553,6 +554,7 @@ class _RegistrarDesperdicioPageState
         'motivo': motivoSelecionado,
         'dataDesperdicio': FieldValue.serverTimestamp(),
         'saidaId': saidaId,
+        'entradaId': loteSelecionado,
         'afetaEstoque': geraBaixa,
         'observacao': motivoSelecionado == 'Outro'
                       ? observacaoController.text.trim()

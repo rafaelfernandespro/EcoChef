@@ -336,6 +336,7 @@ class _RegistrarEntradaEstoquePageState
         'categoria': dadosProduto['categoria'] ?? 'Outros',
         'unidade': dadosProduto['unidade'] ?? 'unidade',
         'quantidade': quantidade,
+        'quantidadeDisponivel': quantidade,
         'lote': loteController.text.trim(),
         'validade': Timestamp.fromDate(
           validadeSelecionada!,
