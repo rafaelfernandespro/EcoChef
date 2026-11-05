@@ -1,4 +1,5 @@
 
+import 'package:ecochef/Views/desperdicio/desperdicio-page.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -6,6 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'home-page.dart';
 import 'usuarios/gerenciar-usuario.dart';
 import 'estoque-page.dart';
+import 'desperdicio/desperdicio-page.dart';
 
 class HomeNavigationPage extends StatefulWidget {
   const HomeNavigationPage({super.key});
@@ -97,12 +99,7 @@ class _HomeNavigationPageState
           const EstoquePage(),
 
           // DESPERDÍCIO
-          const _PaginaPlaceholder(
-            titulo: 'Desperdício',
-            icone: Icons.recycling_outlined,
-            descricao:
-                'Registre e acompanhe as perdas de alimentos.',
-          ),
+          const DesperdicioPage(),
 
           // RELATÓRIOS
           const _PaginaPlaceholder(
@@ -157,7 +154,7 @@ class _HomeNavigationPageState
           NavigationDestination(
             icon: Icon(Icons.inventory_2_outlined),
             selectedIcon: Icon(Icons.inventory_2),
-            label: 'Produtos',
+            label: 'Estoque',
           ),
 
           NavigationDestination(

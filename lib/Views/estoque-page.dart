@@ -302,8 +302,14 @@ class _EstoquePageState extends State<EstoquePage> {
         for (final documento in snapshot.docs) {
           final dados = documento.data();
 
-          final produtoId = dados['produtoId']?.toString();
+          // Considera somente desperdícios que geram baixa.
+          // Documentos antigos, sem afetaEstoque, continuam contando.
+          if (dados.containsKey('afetaEstoque') &&
+              dados['afetaEstoque'] != true) {
+            continue;
+          }
 
+          final produtoId = dados['produtoId']?.toString();
           if (produtoId == null || produtoId.isEmpty) {
             continue;
           }
@@ -650,6 +656,11 @@ class _EstoquePageState extends State<EstoquePage> {
         unidades.contains(produto.unidade)
             ? produto.unidade
             : 'unidade';
+    
+    final nomeOriginal = nomeController.text.trim();
+    final minimoOriginal = minimoController.text.trim();
+    final categoriaOriginal = categoriaSelecionada;
+    final unidadeOriginal = unidadeSelecionada;
 
     final formKey = GlobalKey<FormState>();
 
@@ -659,6 +670,13 @@ class _EstoquePageState extends State<EstoquePage> {
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, atualizarDialog) {
+
+            final houveAlteracao =
+            nomeController.text.trim() != nomeOriginal ||
+            minimoController.text.trim() != minimoOriginal ||
+            categoriaSelecionada != categoriaOriginal ||
+            unidadeSelecionada != unidadeOriginal;
+
             return AlertDialog(
               backgroundColor: Colors.white,
               shape: RoundedRectangleBorder(
@@ -687,6 +705,9 @@ class _EstoquePageState extends State<EstoquePage> {
                       ),
                       const SizedBox(height: 7),
                       TextFormField(
+                        onChanged: (valor) {
+                          atualizarDialog(() {});
+                        },
                         controller: nomeController,
                         textCapitalization: TextCapitalization.words,
                         decoration: _decoracaoCampo(
@@ -763,6 +784,9 @@ class _EstoquePageState extends State<EstoquePage> {
                       ),
                       const SizedBox(height: 7),
                       TextFormField(
+                        onChanged: (valor) {
+                          atualizarDialog(() {});
+                        },
                         controller: minimoController,
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
@@ -801,7 +825,7 @@ class _EstoquePageState extends State<EstoquePage> {
                     backgroundColor: azulPrincipal,
                     foregroundColor: Colors.white,
                   ),
-                  onPressed: () async {
+                  onPressed: houveAlteracao ? () async {
                     if (!formKey.currentState!.validate()) return;
 
                     final nome = nomeController.text.trim();
@@ -855,7 +879,7 @@ class _EstoquePageState extends State<EstoquePage> {
                         ),
                       );
                     }
-                  },
+                  } : null,
                   child: const Text('Salvar alterações'),
                 ),
               ],

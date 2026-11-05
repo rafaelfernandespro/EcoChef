@@ -23,10 +23,12 @@ class _RegistrarSaidaEstoquePageState
     extends State<RegistrarSaidaEstoquePage> {
   final _formKey = GlobalKey<FormState>();
 
+  
   final quantidadeController = TextEditingController();
   final observacaoController = TextEditingController();
 
   String? produtoSelecionado;
+
   String? motivoSelecionado;
 
   double? estoqueDisponivel;
@@ -39,6 +41,7 @@ class _RegistrarSaidaEstoquePageState
     'Consumo na cozinha',
     'Preparo de receitas',
     'Transferência',
+    'Doação',
     'Outro',
   ];
 
@@ -48,6 +51,144 @@ class _RegistrarSaidaEstoquePageState
     observacaoController.dispose();
     super.dispose();
   }
+
+  Future<void> _abrirSeletorProdutos(
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> produtos,
+) async {
+  final pesquisaController = TextEditingController();
+
+  final resultado =
+      await showModalBottomSheet<QueryDocumentSnapshot<Map<String, dynamic>>>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.white,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(
+        top: Radius.circular(24),
+      ),
+    ),
+    builder: (context) {
+      return StatefulBuilder(
+        builder: (context, atualizarModal) {
+          final pesquisa = pesquisaController.text.toLowerCase().trim();
+
+          final produtosFiltrados = produtos.where((doc) {
+            final nome =
+                (doc.data()['nome'] ?? '').toString().toLowerCase();
+
+            return nome.contains(pesquisa);
+          }).toList();
+
+          return SafeArea(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                20,
+                20,
+                20,
+                MediaQuery.of(context).viewInsets.bottom + 20,
+              ),
+              child: SizedBox(
+                height: MediaQuery.of(context).size.height * 0.65,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Selecionar produto',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: textoPrincipal,
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    TextField(
+                      controller: pesquisaController,
+                      onChanged: (_) => atualizarModal(() {}),
+                      decoration: InputDecoration(
+                        hintText: 'Pesquisar produto...',
+                        prefixIcon: const Icon(Icons.search),
+                        filled: true,
+                        fillColor: fundo,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: borda),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    Expanded(
+                      child: produtosFiltrados.isEmpty
+                          ? const Center(
+                              child: Text(
+                                'Nenhum produto encontrado.',
+                                style: TextStyle(
+                                  color: textoSecundario,
+                                ),
+                              ),
+                            )
+                          : ListView.separated(
+                              itemCount: produtosFiltrados.length,
+                              separatorBuilder: (_, __) =>
+                                  const Divider(color: borda),
+                              itemBuilder: (context, index) {
+                                final produto = produtosFiltrados[index];
+                                final nome =
+                                    produto.data()['nome']?.toString() ?? '';
+
+                                final selecionado =
+                                    produto.id == produtoSelecionado;
+
+                                return ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  title: Text(
+                                    nome,
+                                    style: const TextStyle(
+                                      color: textoPrincipal,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  trailing: selecionado
+                                      ? const Icon(
+                                          Icons.check_circle,
+                                          color: azulPrincipal,
+                                        )
+                                      : const Icon(
+                                          Icons.chevron_right,
+                                          color: textoSecundario,
+                                        ),
+                                  onTap: () {
+                                    Navigator.pop(context, produto);
+                                  },
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    },
+  );
+
+  pesquisaController.dispose();
+
+  if (resultado == null || !mounted) return;
+
+  setState(() {
+    produtoSelecionado = resultado.id;
+    unidadeProduto =
+        resultado.data()['unidade']?.toString() ?? 'unidade';
+  });
+
+  await _atualizarEstoqueDisponivel(resultado.id);
+}
 
   // Soma as quantidades de uma coleção para determinado produto.
   Future<double> _somarColecao(
@@ -62,7 +203,17 @@ class _RegistrarSaidaEstoquePageState
     double total = 0;
 
     for (final doc in consulta.docs) {
-      final quantidade = doc.data()['quantidade'];
+      final dados = doc.data();
+
+      // Desperdícios que já foram descontados por uma saída
+      // não podem gerar uma segunda baixa.
+      if (colecao == 'desperdicios' &&
+          dados.containsKey('afetaEstoque') &&
+          dados['afetaEstoque'] != true) {
+        continue;
+      }
+
+      final quantidade = dados['quantidade'];
 
       if (quantidade is num) {
         total += quantidade.toDouble();
@@ -366,50 +517,43 @@ class _RegistrarSaidaEstoquePageState
                       );
                     }
 
-                    return DropdownButtonFormField<String>(
-                      initialValue: produtoSelecionado,
-                      isExpanded: true,
-                      decoration: _decoracao(
-                        titulo: 'Selecione o produto',
-                        icone: Icons.inventory_2_outlined,
-                      ),
-                      items: produtos.map((doc) {
-                        final nome =
-                            doc.data()['nome']?.toString() ?? '';
-
-                        return DropdownMenuItem<String>(
-                          value: doc.id,
-                          child: Text(
-                            nome,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        );
-                      }).toList(),
-                      onChanged: carregando
+                    return InkWell(
+                      onTap: carregando
                           ? null
-                          : (valor) {
-                              if (valor == null) return;
-
-                              final selecionado = produtos.firstWhere(
-                                (doc) => doc.id == valor,
-                              );
-
-                              setState(() {
-                                produtoSelecionado = valor;
-                                unidadeProduto = selecionado
-                                        .data()['unidade']
-                                        ?.toString() ??
-                                    'unidade';
-                              });
-
-                              _atualizarEstoqueDisponivel(valor);
-                            },
-                      validator: (valor) {
-                        if (valor == null) {
-                          return 'Selecione um produto';
-                        }
-                        return null;
-                      },
+                          : () => _abrirSeletorProdutos(produtos),
+                      borderRadius: BorderRadius.circular(12),
+                      child: InputDecorator(
+                        decoration: _decoracao(
+                          titulo: 'Selecione o produto',
+                          icone: Icons.inventory_2_outlined,
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                produtoSelecionado == null
+                                    ? 'Pesquisar e selecionar produto'
+                                    : produtos
+                                        .firstWhere(
+                                          (doc) => doc.id == produtoSelecionado,
+                                        )
+                                        .data()['nome']
+                                        .toString(),
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: produtoSelecionado == null
+                                      ? textoSecundario
+                                      : textoPrincipal,
+                                ),
+                              ),
+                            ),
+                            const Icon(
+                              Icons.search,
+                              color: azulPrincipal,
+                            ),
+                          ],
+                        ),
+                      ),
                     );
                   },
                 ),
