@@ -15,22 +15,181 @@ class HomePage extends StatelessWidget {
 
   // DADOS DE DEMONSTRAÇÃO.
   // Futuramente, substituir por dados vindos da API.
-  static const int totalProdutos = 32;
-  static const int itensEmFalta = 3;
-  static const double desperdicioDiario = 12.5;
-  static const double custoDesperdicio = 86.40;
-
-  static const List<double> desperdicioSemanal = [
-    8, 12, 6, 15, 10, 18, 12.5
-  ];
-
-  static const List<String> diasSemana = [
-    'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'
-  ];
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('produtos')
+          .snapshots(),
+      builder: (context, produtosSnapshot) {
+        if (produtosSnapshot.hasError) {
+          return const Center(
+            child: Text('Erro ao carregar produtos.'),
+          );
+        }
+
+        if (!produtosSnapshot.hasData) {
+          return const Center(
+            child: CircularProgressIndicator(),
+          );
+        }
+
+        return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance
+              .collection('entradasEstoque')
+              .snapshots(),
+          builder: (context, entradasSnapshot) {
+            if (entradasSnapshot.hasError) {
+              return const Center(
+                child: Text('Erro ao carregar estoque.'),
+              );
+            }
+
+            if (!entradasSnapshot.hasData) {
+              return const Center(
+                child: CircularProgressIndicator(),
+              );
+            }
+
+            return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: FirebaseFirestore.instance
+                  .collection('desperdicios')
+                  .snapshots(),
+              builder: (context, desperdiciosSnapshot) {
+                if (desperdiciosSnapshot.hasError) {
+                  return const Center(
+                    child: Text('Erro ao carregar desperdícios.'),
+                  );
+                }
+
+                if (!desperdiciosSnapshot.hasData) {
+                  return const Center(
+                    child: CircularProgressIndicator(),
+                  );
+                }
+
+                return _montarHome(
+                  context,
+                  produtosSnapshot.data!.docs,
+                  entradasSnapshot.data!.docs,
+                  desperdiciosSnapshot.data!.docs,
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _montarHome(
+  BuildContext context,
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> produtosDocs,
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> entradasDocs,
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> desperdiciosDocs,
+) {
+  // Produtos ativos.
+  final produtosAtivos = produtosDocs.where((doc) {
+    return doc.data()['ativo'] != false;
+  }).toList();
+
+  // Informações dos produtos para consultar unidade e estoque mínimo.
+  final dadosProdutos = {
+    for (final doc in produtosDocs)
+      doc.id: doc.data(),
+  };
+
+  // Estoque disponível por produto.
+  final estoquePorProduto = <String, double>{};
+
+  for (final entrada in entradasDocs) {
+    final dados = entrada.data();
+    final produtoId = dados['produtoId']?.toString();
+
+    if (produtoId == null || produtoId.isEmpty) continue;
+
+    final quantidade =
+        (dados['quantidadeDisponivel'] as num?)?.toDouble() ?? 0.0;
+
+    estoquePorProduto[produtoId] =
+        (estoquePorProduto[produtoId] ?? 0.0) + quantidade;
+  }
+
+  // Calcula produtos sem estoque e abaixo do mínimo.
+  int itensEmFalta = 0;
+  int estoqueBaixo = 0;
+
+  for (final produto in produtosAtivos) {
+    final dados = produto.data();
+
+    final quantidade =
+        estoquePorProduto[produto.id] ?? 0.0;
+
+    final estoqueMinimo =
+        (dados['estoqueMinimo'] as num?)?.toDouble() ?? 0.0;
+
+    if (quantidade <= 0) {
+      itensEmFalta++;
+    } else if (quantidade < estoqueMinimo) {
+      estoqueBaixo++;
+    }
+  }
+
+  // Calcula o desperdício registrado hoje em kg.
+  final agora = DateTime.now();
+
+  final inicioHoje = DateTime(
+    agora.year,
+    agora.month,
+    agora.day,
+  );
+
+  final inicioAmanha = inicioHoje.add(
+    const Duration(days: 1),
+  );
+
+  double desperdicioDiario = 0;
+
+  for (final desperdicio in desperdiciosDocs) {
+    final dados = desperdicio.data();
+
+    final dataRegistro = dados['dataDesperdicio'];
+
+    DateTime? data;
+
+    if (dataRegistro is Timestamp) {
+      data = dataRegistro.toDate();
+    } else if (dataRegistro is DateTime) {
+      data = dataRegistro;
+    }
+
+    if (data == null) continue;
+
+    if (data.isBefore(inicioHoje) ||
+        !data.isBefore(inicioAmanha)) {
+      continue;
+    }
+
+    final quantidade =
+        (dados['quantidade'] as num?)?.toDouble() ?? 0.0;
+
+    final produtoId = dados['produtoId']?.toString();
+
+    final unidade = (
+      dados['unidade'] ??
+      dadosProdutos[produtoId]?['unidade'] ??
+      ''
+    ).toString().trim().toLowerCase();
+
+    if (unidade == 'kg') {
+      desperdicioDiario += quantidade;
+    } else if (unidade == 'g') {
+      desperdicioDiario += quantidade / 1000;
+    }
+  }
+
+  return Scaffold(
       backgroundColor: fundo,
       body: SafeArea(
         child: CustomScrollView(
@@ -60,13 +219,13 @@ class HomePage extends StatelessWidget {
                   ),
                   const SizedBox(height: 20),
 
-                  // KPIs
+                  // PRIMEIRA LINHA DE CARDS
                   Row(
                     children: [
                       Expanded(
                         child: _kpi(
                           titulo: 'Produtos',
-                          valor: '$totalProdutos',
+                          valor: '${produtosAtivos.length}',
                           descricao: 'Cadastrados',
                           icone: Icons.inventory_2_outlined,
                           cor: azulPrincipal,
@@ -76,24 +235,26 @@ class HomePage extends StatelessWidget {
                       Expanded(
                         child: _kpi(
                           titulo: 'Desperdício hoje',
-                          valor: '${desperdicioDiario.toStringAsFixed(1)} kg',
-                          descricao:
-                              'R\$ ${custoDesperdicio.toStringAsFixed(2)}',
+                          valor:
+                              '${desperdicioDiario.toStringAsFixed(2).replaceAll('.', ',')} kg',
+                          descricao: 'Registrado hoje',
                           icone: Icons.delete_outline,
                           cor: const Color(0xFFEA580C),
                         ),
                       ),
                     ],
                   ),
+
                   const SizedBox(height: 12),
 
+                  // SEGUNDA LINHA DE CARDS
                   Row(
                     children: [
                       Expanded(
                         child: _kpi(
                           titulo: 'Itens em falta',
                           valor: '$itensEmFalta',
-                          descricao: 'Precisam de atenção',
+                          descricao: 'Sem estoque disponível',
                           icone: Icons.warning_amber_rounded,
                           cor: const Color(0xFFDC2626),
                         ),
@@ -102,7 +263,7 @@ class HomePage extends StatelessWidget {
                       Expanded(
                         child: _kpi(
                           titulo: 'Estoque baixo',
-                          valor: '5',
+                          valor: '$estoqueBaixo',
                           descricao: 'Abaixo do mínimo',
                           icone: Icons.trending_down,
                           cor: const Color(0xFFD97706),
@@ -114,20 +275,12 @@ class HomePage extends StatelessWidget {
                   const SizedBox(height: 28),
 
                   _tituloSecao(
-                    'Desperdício semanal',
-                    'Quantidade descartada por dia',
-                  ),
-                  const SizedBox(height: 14),
-                  _graficoSemanal(),
-
-                  const SizedBox(height: 28),
-
-                  _tituloSecao(
                     'Alertas recentes',
                     'Ocorrências que precisam de atenção',
                   ),
                   const SizedBox(height: 14),
 
+                  // PLACEHOLDERS: MANTIDOS POR ENQUANTO
                   _alerta(
                     icone: Icons.error_outline,
                     cor: const Color(0xFFDC2626),
@@ -136,6 +289,7 @@ class HomePage extends StatelessWidget {
                     tempo: 'Há 20 min',
                   ),
                   const SizedBox(height: 10),
+
                   _alerta(
                     icone: Icons.warning_amber_rounded,
                     cor: const Color(0xFFD97706),
@@ -144,6 +298,7 @@ class HomePage extends StatelessWidget {
                     tempo: 'Há 1 hora',
                   ),
                   const SizedBox(height: 10),
+
                   _alerta(
                     icone: Icons.delete_outline,
                     cor: azulPrincipal,
@@ -301,95 +456,6 @@ Widget _cabecalho(BuildContext context) {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _graficoSemanal() {
-    final maiorValor = desperdicioSemanal.reduce(
-      (a, b) => a > b ? a : b,
-    );
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: borda),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Alimentos desperdiçados',
-            style: TextStyle(
-              fontSize: 13,
-              color: textoSecundario,
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'kg / dia',
-            style: TextStyle(
-              fontSize: 12,
-              color: textoSecundario,
-            ),
-          ),
-          const SizedBox(height: 22),
-
-          SizedBox(
-            height: 145,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: List.generate(desperdicioSemanal.length, (index) {
-                final valor = desperdicioSemanal[index];
-                final altura = maiorValor == 0
-                    ? 0.0
-                    : (valor / maiorValor) * 100;
-
-                return Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Text(
-                          valor.toStringAsFixed(
-                            valor == valor.roundToDouble() ? 0 : 1,
-                          ),
-                          style: const TextStyle(
-                            fontSize: 10,
-                            color: textoSecundario,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Container(
-                          height: altura,
-                          decoration: BoxDecoration(
-                            color: index == desperdicioSemanal.length - 1
-                                ? azulEscuro
-                                : azulPrincipal.withOpacity(0.65),
-                            borderRadius: const BorderRadius.vertical(
-                              top: Radius.circular(6),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          diasSemana[index],
-                          style: const TextStyle(
-                            fontSize: 10,
-                            color: textoSecundario,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }),
-            ),
-          ),
-        ],
-      ),
     );
   }
 

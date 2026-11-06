@@ -169,6 +169,7 @@ class _EstoquePageState extends State<EstoquePage> {
   }
 
   // Escuta as entradas de estoque em tempo real.
+  
   void _ouvirEntradas() {
     _entradasSubscription?.cancel();
 
@@ -189,11 +190,15 @@ class _EstoquePageState extends State<EstoquePage> {
             continue;
           }
 
+          // Utilizar somente a quantidade ainda disponível no lote.
           final quantidade =
-              (dados['quantidade'] as num?)?.toDouble() ?? 0.0;
+              (dados['quantidadeDisponivel'] as num?)?.toDouble() ?? 0.0;
 
           quantidades[produtoId] =
               (quantidades[produtoId] ?? 0.0) + quantidade;
+
+          // Lotes zerados não devem influenciar o próximo vencimento.
+          if (quantidade <= 0) continue;
 
           final validadeTimestamp = dados['validade'];
 
@@ -239,6 +244,7 @@ class _EstoquePageState extends State<EstoquePage> {
       },
     );
   }
+
 
   // Escuta as saídas normais de estoque em tempo real.
   void _ouvirSaidas() {
@@ -379,20 +385,15 @@ class _EstoquePageState extends State<EstoquePage> {
   }
 
   // Calcula o estoque disponível de cada produto.
+  
   void _recalcularProdutos() {
     for (int i = 0; i < produtos.length; i++) {
       final produto = produtos[i];
 
-      final entradas =
+      // O saldo já considera entradas, saídas e desperdícios,
+      // pois cada movimentação atualiza quantidadeDisponivel.
+      final quantidade =
           _quantidadesPorProduto[produto.id] ?? 0.0;
-
-      final saidas =
-          _saidasPorProduto[produto.id] ?? 0.0;
-
-      final desperdicios =
-          _desperdiciosPorProduto[produto.id] ?? 0.0;
-
-      final quantidade = entradas - saidas - desperdicios;
 
       final validade = _validadePorProduto[produto.id];
 
@@ -420,6 +421,7 @@ class _EstoquePageState extends State<EstoquePage> {
           .compareTo(b.nome.toLowerCase()),
     );
   }
+
 
   @override
   void dispose() {

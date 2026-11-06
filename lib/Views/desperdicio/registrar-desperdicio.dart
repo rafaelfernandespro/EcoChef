@@ -64,6 +64,8 @@ class _RegistrarDesperdicioPageState
   ];
 
   List<_SaidaDisponivel> saidasDisponiveis = [];
+  List<_LoteDisponivel> lotesDisponiveis = [];
+  _LoteDisponivel? loteAtualSelecionado;
 
   bool get precisaSaidaAnterior {
     if (motivosComSaida.contains(motivoSelecionado)) {
@@ -228,6 +230,8 @@ class _RegistrarDesperdicioPageState
       saidaSelecionada = null;
       saidasDisponiveis = [];
       consultando = true;
+      loteAtualSelecionado = null;
+      lotesDisponiveis = [];
     });
 
     await _carregarInformacoesProduto(resultado.id);
@@ -265,28 +269,35 @@ class _RegistrarDesperdicioPageState
   }
 
   Future<double> _calcularEstoque(String produtoId) async {
-    final entradas =
-        await _somarColecao('entradasEstoque', produtoId);
+    final consulta = await FirebaseFirestore.instance
+        .collection('entradasEstoque')
+        .where('produtoId', isEqualTo: produtoId)
+        .get();
 
-    final saidas =
-        await _somarColecao('saidasEstoque', produtoId);
+    double total = 0;
 
-    final desperdicios =
-        await _somarColecao('desperdicios', produtoId);
+    for (final doc in consulta.docs) {
+      final dados = doc.data();
 
-    return entradas - saidas - desperdicios;
+      total +=
+          (dados['quantidadeDisponivel'] as num?)?.toDouble() ?? 0.0;
+    }
+
+    return total;
   }
 
   Future<void> _carregarInformacoesProduto(String produtoId) async {
     try {
       final estoque = await _calcularEstoque(produtoId);
       final saidas = await _carregarSaidas(produtoId);
+      final lotes = await _carregarLotes(produtoId);
 
       if (!mounted) return;
 
       setState(() {
         estoqueDisponivel = estoque;
         saidasDisponiveis = saidas;
+        lotesDisponiveis = lotes;
         consultando = false;
       });
     } catch (e) {
@@ -298,6 +309,43 @@ class _RegistrarDesperdicioPageState
 
       _mensagem('Erro ao consultar o produto: $e');
     }
+  }
+
+    Future<List<_LoteDisponivel>> _carregarLotes(
+    String produtoId,
+  ) async {
+    final consulta = await FirebaseFirestore.instance
+        .collection('entradasEstoque')
+        .where('produtoId', isEqualTo: produtoId)
+        .get();
+
+    final lotes = consulta.docs.map((doc) {
+      final dados = doc.data();
+
+      final validade = dados['validade'];
+
+      return _LoteDisponivel(
+        id: doc.id,
+        lote: dados['lote']?.toString() ?? 'Sem identificação',
+        quantidadeDisponivel:
+            (dados['quantidadeDisponivel'] as num?)?.toDouble() ?? 0,
+        validade: validade is Timestamp
+            ? validade.toDate()
+            : null,
+      );
+    }).where((lote) {
+      return lote.quantidadeDisponivel > 0;
+    }).toList();
+
+    lotes.sort((a, b) {
+      if (a.validade == null && b.validade == null) return 0;
+      if (a.validade == null) return 1;
+      if (b.validade == null) return -1;
+
+      return a.validade!.compareTo(b.validade!);
+    });
+
+    return lotes;
   }
 
   // ============================================================
@@ -447,15 +495,119 @@ class _RegistrarDesperdicioPageState
     });
   }
 
+  Future<void> _abrirSeletorLotes() async {
+    if (lotesDisponiveis.isEmpty) {
+      _mensagem('Não existem lotes com saldo disponível para este produto.');
+      return;
+    }
+
+    final resultado = await showModalBottomSheet<_LoteDisponivel>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(24),
+        ),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: SizedBox(
+              height: 420,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Selecionar lote',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: textoPrincipal,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Escolha o lote de onde o produto será descartado.',
+                    style: TextStyle(color: textoSecundario),
+                  ),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: ListView.separated(
+                      itemCount: lotesDisponiveis.length,
+                      separatorBuilder: (_, __) =>
+                          const Divider(color: borda),
+                      itemBuilder: (context, index) {
+                        final lote = lotesDisponiveis[index];
+
+                        final vencido = lote.validade != null &&
+                            DateTime(
+                              lote.validade!.year,
+                              lote.validade!.month,
+                              lote.validade!.day,
+                            ).isBefore(
+                              DateTime(
+                                DateTime.now().year,
+                                DateTime.now().month,
+                                DateTime.now().day,
+                              ),
+                            );
+
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(
+                            'Lote: ${lote.lote}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: textoPrincipal,
+                            ),
+                          ),
+                          subtitle: Text(
+                            'Disponível: ${_formatarQuantidade(lote.quantidadeDisponivel)}'
+                            '\nValidade: ${lote.validade == null ? 'Não informada' : _formatarData(lote.validade!)}'
+                            '${vencido ? '\nVENCIDO' : ''}',
+                            style: TextStyle(
+                              color: vencido
+                                  ? Colors.red
+                                  : textoSecundario,
+                            ),
+                          ),
+                          trailing: const Icon(
+                            Icons.chevron_right,
+                            color: azulPrincipal,
+                          ),
+                          onTap: () => Navigator.pop(context, lote),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    if (resultado == null || !mounted) return;
+
+    setState(() {
+      loteAtualSelecionado = resultado;
+      loteSelecionado = resultado.id;
+    });
+  }
+
   // ============================================================
   // REGISTRO DO DESPERDÍCIO
   // ============================================================
 
   Future<void> _registrarDesperdicio() async {
+    if (carregando) return;
 
     if (!_formKey.currentState!.validate()) return;
 
-    if (motivoSelecionado == 'Outro' && observacaoController.text.trim().isEmpty) {
+    if (motivoSelecionado == 'Outro' &&
+        observacaoController.text.trim().isEmpty) {
       _mensagem('Informe uma observação para o motivo selecionado.');
       return;
     }
@@ -470,7 +622,14 @@ class _RegistrarDesperdicioPageState
       return;
     }
 
-    if (precisaSaidaAnterior && saidaSelecionada == null) {
+    final geraBaixa = afetaEstoque;
+
+    if (geraBaixa && loteAtualSelecionado == null) {
+      _mensagem('Selecione o lote do produto.');
+      return;
+    }
+
+    if (!geraBaixa && saidaSelecionada == null) {
       _mensagem('Selecione a saída relacionada.');
       return;
     }
@@ -489,83 +648,127 @@ class _RegistrarDesperdicioPageState
     });
 
     try {
-      final produtoRef = FirebaseFirestore.instance
-          .collection('produtos')
-          .doc(produtoSelecionado);
+      final firestore = FirebaseFirestore.instance;
 
-      final produtoDoc = await produtoRef.get();
+      final produtoId = produtoSelecionado!;
+      final produtoRef = firestore.collection('produtos').doc(produtoId);
 
-      if (!produtoDoc.exists || produtoDoc.data()?['ativo'] != true) {
-        throw Exception('O produto não está mais ativo.');
-      }
+      final desperdicioRef = firestore
+          .collection('desperdicios')
+          .doc();
 
-      String? saidaId;
-      final geraBaixa = afetaEstoque;
+      final observacao = motivoSelecionado == 'Outro'
+          ? observacaoController.text.trim()
+          : null;
 
-      if (geraBaixa) {
-        // Desperdício ocorrido dentro do estoque.
-        final estoqueAtual =
-            await _calcularEstoque(produtoSelecionado!);
+      final saidaId = geraBaixa ? null : saidaSelecionada!.id;
 
-        if (quantidade > estoqueAtual + 0.000001) {
-          throw Exception(
-            'Quantidade maior que o estoque disponível '
-            '(${_formatarQuantidade(estoqueAtual)}).',
-          );
-        }
-      } else {
-        // Desperdício relacionado a uma saída anterior.
-        final saida = saidaSelecionada!;
+      // Referências utilizadas na transação.
+      final loteRef = geraBaixa
+          ? firestore
+              .collection('entradasEstoque')
+              .doc(loteAtualSelecionado!.id)
+          : null;
 
-        final saidaDoc = await FirebaseFirestore.instance
-            .collection('saidasEstoque')
-            .doc(saida.id)
-            .get();
+      final saidaRef = !geraBaixa
+          ? firestore
+              .collection('saidasEstoque')
+              .doc(saidaSelecionada!.id)
+          : null;
 
-        if (!saidaDoc.exists ||
-            saidaDoc.data()?['produtoId'] != produtoSelecionado) {
-          throw Exception('A saída selecionada não é mais válida.');
-        }
-
-        final saidasAtualizadas =
-            await _carregarSaidas(produtoSelecionado!);
+      // Validação adicional da saída relacionada.
+      if (!geraBaixa) {
+        final saidasAtualizadas = await _carregarSaidas(produtoId);
 
         final saidaAtualizada = saidasAtualizadas
-            .where((item) => item.id == saida.id)
+            .where((item) => item.id == saidaId)
             .toList();
 
         if (saidaAtualizada.isEmpty ||
             quantidade >
                 saidaAtualizada.first.quantidadeRestante + 0.000001) {
           throw Exception(
-            'A quantidade ultrapassa o restante disponível '
-            'da saída selecionada.',
+            'A quantidade ultrapassa o restante disponível da saída selecionada.',
           );
         }
-
-        saidaId = saida.id;
       }
 
-      await FirebaseFirestore.instance
-          .collection('desperdicios')
-          .add({
-        'produtoId': produtoSelecionado,
-        'quantidade': quantidade,
-        'motivo': motivoSelecionado,
-        'dataDesperdicio': FieldValue.serverTimestamp(),
-        'saidaId': saidaId,
-        'entradaId': loteSelecionado,
-        'afetaEstoque': geraBaixa,
-        'observacao': motivoSelecionado == 'Outro'
-                      ? observacaoController.text.trim()
-                      : null,
+      await firestore.runTransaction((transaction) async {
+        // Primeiro fazemos todas as leituras.
+        final produtoDoc = await transaction.get(produtoRef);
+
+        if (!produtoDoc.exists ||
+            produtoDoc.data()?['ativo'] != true) {
+          throw Exception('O produto não está mais ativo.');
+        }
+
+        DocumentSnapshot<Map<String, dynamic>>? loteDoc;
+        DocumentSnapshot<Map<String, dynamic>>? saidaDoc;
+
+        if (geraBaixa) {
+          loteDoc = await transaction.get(loteRef!);
+
+          if (!loteDoc.exists ||
+              loteDoc.data()?['produtoId'] != produtoId) {
+            throw Exception('O lote selecionado não é mais válido.');
+          }
+
+          final saldoLote =
+              (loteDoc.data()?['quantidadeDisponivel'] as num?)
+                  ?.toDouble() ?? 0.0;
+
+          if (saldoLote <= 0) {
+            throw Exception('Este lote não possui saldo disponível.');
+          }
+
+          if (quantidade > saldoLote + 0.000001) {
+            throw Exception(
+              'A quantidade informada ultrapassa o saldo do lote '
+              '(${_formatarQuantidade(saldoLote)} disponíveis).',
+            );
+          }
+        } else {
+          saidaDoc = await transaction.get(saidaRef!);
+
+          if (!saidaDoc.exists ||
+              saidaDoc.data()?['produtoId'] != produtoId) {
+            throw Exception('A saída selecionada não é mais válida.');
+          }
+        }
+
+        // Todas as leituras foram feitas.
+        // Agora podemos gravar as alterações.
+
+        if (geraBaixa) {
+          final saldoAtual =
+              (loteDoc!.data()?['quantidadeDisponivel'] as num)
+                  .toDouble();
+
+          transaction.update(loteRef!, {
+            'quantidadeDisponivel': saldoAtual - quantidade,
+          });
+        }
+
+        transaction.set(desperdicioRef, {
+          'produtoId': produtoId,
+          'quantidade': quantidade,
+          'motivo': motivoSelecionado,
+          'dataDesperdicio': FieldValue.serverTimestamp(),
+          'saidaId': saidaId,
+          'entradaId': geraBaixa ? loteAtualSelecionado!.id : null,
+          'afetaEstoque': geraBaixa,
+          'observacao': observacao,
+        });
       });
 
       if (!mounted) return;
 
       _mensagem('Desperdício registrado com sucesso!');
-
       Navigator.pop(context);
+    } on FirebaseException catch (e) {
+      _mensagem(
+        'Erro ao salvar no Firebase: ${e.message ?? e.code}',
+      );
     } catch (e) {
       _mensagem(
         e.toString().replaceFirst('Exception: ', ''),
@@ -796,6 +999,53 @@ class _RegistrarDesperdicioPageState
                   ],
 
                   const SizedBox(height: 20),
+
+                  // LOTE PARA BAIXA DIRETA
+                  if (afetaEstoque && produtoSelecionado != null) ...[
+                    const Text(
+                      'Lote do produto *',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: textoPrincipal,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    InkWell(
+                      onTap: carregando || consultando
+                          ? null
+                          : _abrirSeletorLotes,
+                      borderRadius: BorderRadius.circular(12),
+                      child: InputDecorator(
+                        decoration: _decoracao(
+                          titulo: 'Selecione o lote',
+                          icone: Icons.inventory_2_outlined,
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                loteAtualSelecionado == null
+                                    ? 'Selecionar lote para descarte'
+                                    : 'Lote: ${loteAtualSelecionado!.lote} '
+                                        '(${_formatarQuantidade(loteAtualSelecionado!.quantidadeDisponivel)} disponíveis)',
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: loteAtualSelecionado == null
+                                      ? textoSecundario
+                                      : textoPrincipal,
+                                ),
+                              ),
+                            ),
+                            const Icon(
+                              Icons.search,
+                              color: azulPrincipal,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
 
                   // QUANTIDADE
                   const Text(
@@ -1149,5 +1399,19 @@ class _SaidaDisponivel {
     required this.quantidadeRestante,
     required this.motivo,
     required this.data,
+  });
+}
+
+class _LoteDisponivel {
+  final String id;
+  final String lote;
+  final double quantidadeDisponivel;
+  final DateTime? validade;
+
+  _LoteDisponivel({
+    required this.id,
+    required this.lote,
+    required this.quantidadeDisponivel,
+    required this.validade,
   });
 }
