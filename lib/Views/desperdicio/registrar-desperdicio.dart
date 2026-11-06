@@ -26,6 +26,7 @@ class _RegistrarDesperdicioPageState
   final observacaoController = TextEditingController();
 
   String? produtoSelecionado;
+  String unidadeProduto = 'unidade';
   String? loteSelecionado;
   String? motivoSelecionado;
   _SaidaDisponivel? saidaSelecionada;
@@ -226,6 +227,8 @@ class _RegistrarDesperdicioPageState
 
     setState(() {
       produtoSelecionado = resultado.id;
+      unidadeProduto =
+        resultado.data()['unidade']?.toString() ?? 'unidade';
       estoqueDisponivel = null;
       saidaSelecionada = null;
       saidasDisponiveis = [];
@@ -563,7 +566,7 @@ class _RegistrarDesperdicioPageState
                             ),
                           ),
                           subtitle: Text(
-                            'Disponível: ${_formatarQuantidade(lote.quantidadeDisponivel)}'
+                            'Disponível: ${_formatarQuantidade(lote.quantidadeDisponivel)} $unidadeProduto'
                             '\nValidade: ${lote.validade == null ? 'Não informada' : _formatarData(lote.validade!)}'
                             '${vencido ? '\nVENCIDO' : ''}',
                             style: TextStyle(
@@ -640,6 +643,21 @@ class _RegistrarDesperdicioPageState
 
     if (quantidade == null || quantidade <= 0) {
       _mensagem('Informe uma quantidade válida.');
+      return;
+    }
+
+    final unidadeNormalizada = unidadeProduto.toLowerCase().trim();
+
+    final unidadeContavel = [
+      'unidade',
+      'un',
+      'unidades',
+    ].contains(unidadeNormalizada);
+
+    if (unidadeContavel && quantidade % 1 != 0) {
+      _mensagem(
+        'Para produtos cadastrados por unidade, informe um número inteiro.',
+      );
       return;
     }
 
@@ -736,6 +754,12 @@ class _RegistrarDesperdicioPageState
           }
         }
 
+        final unidadeRegistro = (
+          saidaDoc?.data()?['unidade'] ??
+          produtoDoc.data()?['unidade'] ??
+          unidadeProduto
+        ).toString();
+
         // Todas as leituras foram feitas.
         // Agora podemos gravar as alterações.
 
@@ -758,6 +782,7 @@ class _RegistrarDesperdicioPageState
           'entradaId': geraBaixa ? loteAtualSelecionado!.id : null,
           'afetaEstoque': geraBaixa,
           'observacao': observacao,
+          'unidade': unidadeRegistro,
         });
       });
 
@@ -987,7 +1012,7 @@ class _RegistrarDesperdicioPageState
                             )
                           else
                             Text(
-                              '${_formatarQuantidade(estoqueDisponivel ?? 0)} kg/un.',
+                              '${_formatarQuantidade(estoqueDisponivel ?? 0)} $unidadeProduto',
                               style: const TextStyle(
                                 fontWeight: FontWeight.bold,
                                 color: textoPrincipal,

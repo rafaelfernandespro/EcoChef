@@ -149,11 +149,10 @@ class HomePage extends StatelessWidget {
     const Duration(days: 1),
   );
 
-  double desperdicioDiario = 0;
+  final desperdicioDiarioPorUnidade = <String, double>{};
 
   for (final desperdicio in desperdiciosDocs) {
     final dados = desperdicio.data();
-
     final dataRegistro = dados['dataDesperdicio'];
 
     DateTime? data;
@@ -164,9 +163,8 @@ class HomePage extends StatelessWidget {
       data = dataRegistro;
     }
 
-    if (data == null) continue;
-
-    if (data.isBefore(inicioHoje) ||
+    if (data == null ||
+        data.isBefore(inicioHoje) ||
         !data.isBefore(inicioAmanha)) {
       continue;
     }
@@ -179,15 +177,66 @@ class HomePage extends StatelessWidget {
     final unidade = (
       dados['unidade'] ??
       dadosProdutos[produtoId]?['unidade'] ??
-      ''
+      'unidade'
     ).toString().trim().toLowerCase();
 
-    if (unidade == 'kg') {
-      desperdicioDiario += quantidade;
-    } else if (unidade == 'g') {
-      desperdicioDiario += quantidade / 1000;
+    String unidadeNormalizada;
+
+    switch (unidade) {
+      case 'un':
+      case 'un.':
+      case 'und':
+      case 'unidades':
+      case 'unidade':
+        unidadeNormalizada = 'unidade';
+        break;
+      case 'l':
+      case 'litro':
+      case 'litros':
+        unidadeNormalizada = 'l';
+        break;
+      case 'ml':
+      case 'mililitro':
+      case 'mililitros':
+        unidadeNormalizada = 'ml';
+        break;
+      default:
+        unidadeNormalizada = unidade;
     }
+
+    desperdicioDiarioPorUnidade[unidadeNormalizada] =
+        (desperdicioDiarioPorUnidade[unidadeNormalizada] ?? 0) +
+            quantidade;
   }
+
+String formatarQuantidade(double quantidade) {
+  return quantidade
+      .toStringAsFixed(2)
+      .replaceAll('.', ',')
+      .replaceFirst(RegExp(r',?0+$'), '');
+}
+
+String formatarUnidade(String unidade) {
+  switch (unidade) {
+    case 'unidade':
+      return 'un.';
+    case 'l':
+      return 'L';
+    case 'ml':
+      return 'mL';
+    default:
+      return unidade;
+  }
+}
+
+final desperdicioTexto =
+    desperdicioDiarioPorUnidade.isEmpty
+        ? '0 kg'
+        : desperdicioDiarioPorUnidade.entries
+            .map((entrada) =>
+                '${formatarQuantidade(entrada.value)} '
+                '${formatarUnidade(entrada.key)}')
+            .join('\n');
 
   return Scaffold(
       backgroundColor: fundo,
@@ -235,8 +284,7 @@ class HomePage extends StatelessWidget {
                       Expanded(
                         child: _kpi(
                           titulo: 'Desperdício hoje',
-                          valor:
-                              '${desperdicioDiario.toStringAsFixed(2).replaceAll('.', ',')} kg',
+                          valor: desperdicioTexto,
                           descricao: 'Registrado hoje',
                           icone: Icons.delete_outline,
                           cor: const Color(0xFFEA580C),
@@ -313,6 +361,7 @@ class HomePage extends StatelessWidget {
         ),
       ),
     );
+  
   }
 
   
