@@ -201,55 +201,77 @@ class _HomePageState extends State<HomePage> {
         continue;
       }
 
-      final quantidade =
-          (dados['quantidade'] as num?)?.toDouble() ?? 0.0;
+      double quantidade =
+    (dados['quantidade'] as num?)?.toDouble() ?? 0.0;
 
-      final produtoId = dados['produtoId']?.toString();
+    final produtoId = dados['produtoId']?.toString();
 
-      final unidade = (
-        dados['unidade'] ??
-        dadosProdutos[produtoId]?['unidade'] ??
-        'unidade'
-      ).toString().trim().toLowerCase();
+    final unidade = (
+      dados['unidade'] ??
+      dadosProdutos[produtoId]?['unidade'] ??
+      'unidade'
+    ).toString().trim().toLowerCase();
 
-      String unidadeNormalizada;
+    String unidadeNormalizada;
 
-      switch (unidade) {
-        case 'un':
-        case 'un.':
-        case 'und':
-        case 'unidades':
-        case 'unidade':
-          unidadeNormalizada = 'unidade';
-          break;
-        case 'l':
-        case 'litro':
-        case 'litros':
-          unidadeNormalizada = 'l';
-          break;
-        case 'ml':
-        case 'mililitro':
-        case 'mililitros':
-          unidadeNormalizada = 'ml';
-          break;
-        default:
-          unidadeNormalizada = unidade;
-      }
+    switch (unidade) {
+      case 'kg':
+      case 'quilo':
+      case 'quilos':
+      case 'quilograma':
+      case 'quilogramas':
+        unidadeNormalizada = 'kg';
+        break;
 
+      case 'g':
+      case 'grama':
+      case 'gramas':
+        unidadeNormalizada = 'kg';
+        quantidade /= 1000;
+        break;
+
+      case 'l':
+      case 'litro':
+      case 'litros':
+        unidadeNormalizada = 'l';
+        break;
+
+      case 'ml':
+      case 'mililitro':
+      case 'mililitros':
+        unidadeNormalizada = 'l';
+        quantidade /= 1000;
+        break;
+
+      case 'un':
+      case 'un.':
+      case 'und':
+      case 'unidades':
+      case 'unidade':
+        unidadeNormalizada = 'unidade';
+        break;
+
+      default:
+        unidadeNormalizada = unidade;
+    }
       desperdicioDiarioPorUnidade[unidadeNormalizada] =
           (desperdicioDiarioPorUnidade[unidadeNormalizada] ?? 0.0) +
               quantidade;
+
     }
 
-    final desperdicioTexto = desperdicioDiarioPorUnidade.isEmpty
-        ? '0 kg'
-        : desperdicioDiarioPorUnidade.entries
-            .map(
-              (entrada) =>
-                  '${formatarQuantidade(entrada.value)} '
-                  '${formatarUnidade(entrada.key)}',
-            )
-            .join('\n');
+    final desperdicioOrdenado =
+      desperdicioDiarioPorUnidade.entries.toList();
+
+    const ordemUnidades = ['kg', 'l', 'unidade'];
+
+    desperdicioOrdenado.sort((a, b) {
+      final ordemA = ordemUnidades.indexOf(a.key);
+      final ordemB = ordemUnidades.indexOf(b.key);
+
+      return (ordemA == -1 ? 999 : ordemA)
+          .compareTo(ordemB == -1 ? 999 : ordemB);
+    });
 
     // ============================================================
     // MONTAGEM DOS ALERTAS
@@ -540,7 +562,7 @@ class _HomePageState extends State<HomePage> {
 
                   const SizedBox(height: 20),
 
-                  // PRIMEIRA LINHA DE CARDS.
+                  // INDICADORES PRINCIPAIS.
                   Row(
                     children: [
                       Expanded(
@@ -555,23 +577,6 @@ class _HomePageState extends State<HomePage> {
 
                       const SizedBox(width: 12),
 
-                      Expanded(
-                        child: _kpi(
-                          titulo: 'Desperdício hoje',
-                          valor: desperdicioTexto,
-                          descricao: 'Registrado hoje',
-                          icone: Icons.delete_outline,
-                          cor: const Color(0xFFEA580C),
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  // SEGUNDA LINHA DE CARDS.
-                  Row(
-                    children: [
                       Expanded(
                         child: _kpi(
                           titulo: 'Itens em falta',
@@ -594,6 +599,15 @@ class _HomePageState extends State<HomePage> {
                         ),
                       ),
                     ],
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // DESPERDÍCIO DO DIA.
+                  _cardDesperdicio(
+                    dados: desperdicioOrdenado,
+                    formatarQuantidade: formatarQuantidade,
+                    formatarUnidade: formatarUnidade,
                   ),
 
                   const SizedBox(height: 28),
@@ -819,6 +833,112 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
+
+  
+  // CARD ESTENDIDO DE DESPERDÍCIO.
+  Widget _cardDesperdicio({
+    required List<MapEntry<String, double>> dados,
+    required String Function(double) formatarQuantidade,
+    required String Function(String) formatarUnidade,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: borda),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEA580C).withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.delete_outline,
+                  color: Color(0xFFEA580C),
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Desperdício hoje',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: textoPrincipal,
+                  ),
+                ),
+              ),
+            
+            ],
+          ),
+
+          const SizedBox(height: 20),
+
+          if (dados.isEmpty)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Text(
+                  'Nenhum desperdício registrado hoje.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: textoSecundario,
+                  ),
+                ),
+              ),
+            )
+          else
+            Row(
+              children: [
+                for (int i = 0; i < dados.length; i++) ...[
+                  if (i > 0)
+                    Container(
+                      width: 1,
+                      height: 48,
+                      color: borda,
+                    ),
+
+                  Expanded(
+                    child: Column(
+                      children: [
+                        Text(
+                          formatarQuantidade(dados[i].value),
+                          style: const TextStyle(
+                            fontSize: 23,
+                            fontWeight: FontWeight.bold,
+                            color: textoPrincipal,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          formatarUnidade(dados[i].key),
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: textoSecundario,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
 
   // TÍTULOS DAS SEÇÕES.
   Widget _tituloSecao(String titulo, String subtitulo) {
