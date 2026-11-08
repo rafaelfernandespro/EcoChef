@@ -1,13 +1,11 @@
-
-import 'package:ecochef/Views/desperdicio/desperdicio-page.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'home-page.dart';
-import 'usuarios/gerenciar-usuario.dart';
 import 'estoque-page.dart';
 import 'desperdicio/desperdicio-page.dart';
+import 'usuarios/gerenciar-usuario.dart';
 import 'relatorios-page.dart';
 
 class HomeNavigationPage extends StatefulWidget {
@@ -18,68 +16,77 @@ class HomeNavigationPage extends StatefulWidget {
       _HomeNavigationPageState();
 }
 
-class _HomeNavigationPageState
-    extends State<HomeNavigationPage> {
+class _HomeNavigationPageState extends State<HomeNavigationPage> {
   int paginaSelecionada = 0;
 
-  bool _verificandoPermissao = false;
-  bool _podeVerUsuarios = false;
+  bool carregandoPerfil = true;
+  bool ehAdmin = false;
+  String? erroPerfil;
 
-  // Verifica se o usuário conectado é administrador ativo.
-  Future<void> verificarAcessoUsuarios() async {
-    if (_verificandoPermissao) return;
+  @override
+  void initState() {
+    super.initState();
+    carregarPerfil();
+  }
 
-    setState(() {
-      paginaSelecionada = 4;
-      _verificandoPermissao = true;
-      _podeVerUsuarios = false;
-    });
-
-    bool autorizado = false;
-
+  // Consulta o perfil do usuário conectado.
+  Future<void> carregarPerfil() async {
     try {
       final usuario = FirebaseAuth.instance.currentUser;
 
-      if (usuario != null) {
-        final documento = await FirebaseFirestore.instance
-            .collection('usuarios')
-            .doc(usuario.uid)
-            .get();
-
-        final dados = documento.data();
-
-        if (documento.exists && dados != null) {
-          final tipo = (dados['tipoUsuario'] ?? '')
-              .toString()
-              .trim()
-              .toLowerCase();
-
-          final ativo = dados['ativo'] == true;
-
-          autorizado =
-              (tipo == 'admin' || tipo == 'administrador') &&
-              ativo;
-        }
+      if (usuario == null) {
+        throw Exception('Usuário não autenticado.');
       }
-    } catch (_) {
-      autorizado = false;
+
+      final documento = await FirebaseFirestore.instance
+          .collection('usuarios')
+          .doc(usuario.uid)
+          .get();
+
+      final dados = documento.data();
+
+      if (!documento.exists || dados == null) {
+        throw Exception('Perfil de usuário não encontrado.');
+      }
+
+      if (dados['ativo'] != true) {
+        throw Exception('Esta conta está inativa.');
+      }
+
+      final tipo = (dados['tipoUsuario'] ?? '')
+          .toString()
+          .trim()
+          .toLowerCase();
+
+      final administrador =
+          tipo == 'admin' || tipo == 'administrador';
+
+      final funcionario =
+          tipo == 'funcionario' || tipo == 'funcionário';
+
+      if (!administrador && !funcionario) {
+        throw Exception('Tipo de usuário inválido.');
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        ehAdmin = administrador;
+        carregandoPerfil = false;
+        erroPerfil = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        carregandoPerfil = false;
+        erroPerfil = e.toString().replaceFirst('Exception: ', '');
+      });
     }
-
-    if (!mounted) return;
-
-    setState(() {
-      _podeVerUsuarios = autorizado;
-      _verificandoPermissao = false;
-    });
   }
 
-  // Controla a seleção das páginas.
+  // Controla a seleção das páginas disponíveis.
   void selecionarPagina(int index) {
-    if (index == 4) {
-      verificarAcessoUsuarios();
-      return;
-    }
-
     setState(() {
       paginaSelecionada = index;
     });
@@ -87,176 +94,125 @@ class _HomeNavigationPageState
 
   @override
   Widget build(BuildContext context) {
+    if (carregandoPerfil) {
+      return const Scaffold(
+        backgroundColor: Color(0xFFF8FAFC),
+        body: Center(
+          child: CircularProgressIndicator(
+            color: Color(0xFF2563EB),
+          ),
+        ),
+      );
+    }
+
+    if (erroPerfil != null) {
+      return Scaffold(
+        backgroundColor: const Color(0xFFF8FAFC),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.lock_outline,
+                  size: 48,
+                  color: Color(0xFF2563EB),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  erroPerfil!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Color(0xFF1E293B),
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  onPressed: () async {
+                    await FirebaseAuth.instance.signOut();
+
+                    if (!context.mounted) return;
+
+                    Navigator.pushNamedAndRemoveUntil(
+                      context,
+                      '/',
+                      (route) => false,
+                    );
+                  },
+                  child: const Text('Voltar ao login'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Páginas disponíveis para cada perfil.
+    final List<Widget> paginas = ehAdmin
+        ? [
+            const HomePage(),
+            const EstoquePage(),
+            const DesperdicioPage(),
+            const RelatoriosPage(),
+            const ListaFuncionariosScreen(),
+          ]
+        : [
+            const HomePage(),
+            const EstoquePage(),
+            const DesperdicioPage(),
+          ];
+
+    // Itens correspondentes às páginas.
+    final List<NavigationDestination> destinos = [
+      const NavigationDestination(
+        icon: Icon(Icons.home_outlined),
+        selectedIcon: Icon(Icons.home),
+        label: 'Início',
+      ),
+      const NavigationDestination(
+        icon: Icon(Icons.inventory_2_outlined),
+        selectedIcon: Icon(Icons.inventory_2),
+        label: 'Estoque',
+      ),
+      const NavigationDestination(
+        icon: Icon(Icons.recycling_outlined),
+        selectedIcon: Icon(Icons.recycling),
+        label: 'Desperdício',
+      ),
+      if (ehAdmin) ...[
+        const NavigationDestination(
+          icon: Icon(Icons.bar_chart_outlined),
+          selectedIcon: Icon(Icons.bar_chart),
+          label: 'Relatórios',
+        ),
+        const NavigationDestination(
+          icon: Icon(Icons.people_outline),
+          selectedIcon: Icon(Icons.people),
+          label: 'Usuários',
+        ),
+      ],
+    ];
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
 
       body: IndexedStack(
         index: paginaSelecionada,
-        children: [
-          // INÍCIO
-          const HomePage(),
-
-          // PRODUTOS
-          const EstoquePage(),
-
-          // DESPERDÍCIO
-          const DesperdicioPage(),
-
-          // RELATÓRIOS
-          // RELATÓRIOS
-          const RelatoriosPage(),
-
-          // USUÁRIOS
-          if (_verificandoPermissao)
-            const Center(
-              child: CircularProgressIndicator(
-                color: Color(0xFF2563EB),
-              ),
-            )
-          else if (_podeVerUsuarios)
-            const ListaFuncionariosScreen()
-          else
-            const _PaginaPlaceholder(
-              titulo: 'Usuários',
-              icone: Icons.recycling_outlined,
-              tituloCentral: 'Acesso não permitido',
-              descricao:
-                  'Você não tem permissão para acessar esta funcionalidade.',
-              mensagemFinal:
-                  'Entre em contato com um administrador para solicitar acesso.',
-            ),
-        ],
+        children: paginas,
       ),
 
-      // BARRA DE NAVEGAÇÃO
       bottomNavigationBar: NavigationBar(
         selectedIndex: paginaSelecionada,
-
         onDestinationSelected: selecionarPagina,
-
         backgroundColor: Colors.white,
         indicatorColor: const Color(0xFFDBEAFE),
         elevation: 3,
-
         labelBehavior:
             NavigationDestinationLabelBehavior.alwaysShow,
-
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'Início',
-          ),
-
-          NavigationDestination(
-            icon: Icon(Icons.inventory_2_outlined),
-            selectedIcon: Icon(Icons.inventory_2),
-            label: 'Estoque',
-          ),
-
-          NavigationDestination(
-            icon: Icon(Icons.recycling_outlined),
-            selectedIcon: Icon(Icons.recycling),
-            label: 'Desperdício',
-          ),
-
-          NavigationDestination(
-            icon: Icon(Icons.bar_chart_outlined),
-            selectedIcon: Icon(Icons.bar_chart),
-            label: 'Relatórios',
-          ),
-
-          NavigationDestination(
-            icon: Icon(Icons.people_outline),
-            selectedIcon: Icon(Icons.people),
-            label: 'Usuários',
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// TELA PADRÃO DAS FUNCIONALIDADES
-class _PaginaPlaceholder extends StatelessWidget {
-  final String titulo;
-  final IconData icone;
-  final String descricao;
-
-  final String? tituloCentral;
-
-  final String mensagemFinal;
-
-  const _PaginaPlaceholder({
-    required this.titulo,
-    required this.icone,
-    required this.descricao,
-    this.tituloCentral,
-    this.mensagemFinal =
-        'Esta funcionalidade será implementada.',
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        title: Text(titulo),
-        backgroundColor: const Color(0xFFF8FAFC),
-        foregroundColor: const Color(0xFF1E3A8A),
-        elevation: 0,
-      ),
-
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icone,
-                size: 64,
-                color: const Color(0xFF2563EB),
-              ),
-
-              const SizedBox(height: 16),
-
-              Text(
-                tituloCentral ?? titulo,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1E3A8A),
-                ),
-              ),
-
-              const SizedBox(height: 8),
-
-              Text(
-                descricao,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Color(0xFF64748B),
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              Text(
-                mensagemFinal,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Color(0xFF64748B),
-                ),
-              ),
-            ],
-          ),
-        ),
+        destinations: destinos,
       ),
     );
   }

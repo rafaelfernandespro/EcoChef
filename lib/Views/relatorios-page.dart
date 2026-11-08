@@ -27,14 +27,15 @@ class _RelatoriosPageState extends State<RelatoriosPage> {
 
   DateTime get dataInicial {
     final agora = DateTime.now();
+    final hoje = DateTime(agora.year, agora.month, agora.day);
 
     switch (periodo) {
       case PeriodoRelatorio.semana:
-        return agora.subtract(const Duration(days: 6));
+        return hoje.subtract(const Duration(days: 6));
       case PeriodoRelatorio.mes:
-        return agora.subtract(const Duration(days: 29));
+        return hoje.subtract(const Duration(days: 29));
       case PeriodoRelatorio.trimestre:
-        return agora.subtract(const Duration(days: 89));
+        return hoje.subtract(const Duration(days: 89));
     }
   }
 
@@ -92,6 +93,9 @@ class _RelatoriosPageState extends State<RelatoriosPage> {
                   produtos[doc.id] = doc.data();
                 }
 
+                final agora = DateTime.now();
+                final inicioPeriodo = dataInicial;
+
                 final registros = desperdiciosSnapshot.data!.docs
                     .map((doc) => doc.data())
                     .where((item) {
@@ -101,8 +105,8 @@ class _RelatoriosPageState extends State<RelatoriosPage> {
 
                   final dataRegistro = data.toDate();
 
-                  return !dataRegistro.isBefore(dataInicial) &&
-                      !dataRegistro.isAfter(DateTime.now());
+                  return !dataRegistro.isBefore(inicioPeriodo) &&
+                      !dataRegistro.isAfter(agora);
                 }).toList();
 
                 final dados = registros.map((item) {
@@ -206,6 +210,7 @@ class _RelatoriosPageState extends State<RelatoriosPage> {
 
   Widget _cabecalho() {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Expanded(
           child: Column(
@@ -338,38 +343,32 @@ class _RelatoriosPageState extends State<RelatoriosPage> {
         .toList();
 
     final quantidadeBarras =
-        periodo == PeriodoRelatorio.semana ? 7 : 10;
+      periodo == PeriodoRelatorio.semana ? 7 : 10;
 
-    final agora = DateTime.now();
+    final diasPeriodo = switch (periodo) {
+      PeriodoRelatorio.semana => 7,
+      PeriodoRelatorio.mes => 30,
+      PeriodoRelatorio.trimestre => 90,
+    };
+
+    final diasPorBarra = diasPeriodo ~/ quantidadeBarras;
     final inicio = dataInicial;
 
     final intervalos = <_Intervalo>[];
 
     for (int i = 0; i < quantidadeBarras; i++) {
       final inicioIntervalo = inicio.add(
-        Duration(
-          milliseconds: (agora.difference(inicio).inMilliseconds *
-                  i /
-                  quantidadeBarras)
-              .round(),
-        ),
+        Duration(days: i * diasPorBarra),
       );
 
-      final fimIntervalo = inicio.add(
-        Duration(
-          milliseconds: (agora.difference(inicio).inMilliseconds *
-                  (i + 1) /
-                  quantidadeBarras)
-              .round(),
-        ),
+      final fimIntervalo = inicioIntervalo.add(
+        Duration(days: diasPorBarra),
       );
 
       final valor = filtrados
           .where((item) =>
               !item.data.isBefore(inicioIntervalo) &&
-              (i == quantidadeBarras - 1
-                  ? !item.data.isAfter(fimIntervalo)
-                  : item.data.isBefore(fimIntervalo)))
+              item.data.isBefore(fimIntervalo))
           .fold<double>(
             0,
             (total, item) => total + item.quantidade,

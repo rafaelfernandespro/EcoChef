@@ -21,7 +21,8 @@ class _HistoricoDesperdicioPageState
   final pesquisaController = TextEditingController();
 
   String pesquisa = '';
-  DateTime? dataSelecionada;
+  DateTime? dataInicial;
+  DateTime? dataFinal;
   String? motivoSelecionado;
 
   @override
@@ -40,12 +41,14 @@ class _HistoricoDesperdicioPageState
         '${data.year}';
   }
 
-  Future<void> selecionarData() async {
+  Future<void> selecionarData(bool inicial) async {
     final agora = DateTime.now();
+
+    final dataAtual = inicial ? dataInicial : dataFinal;
 
     final selecionada = await showDatePicker(
       context: context,
-      initialDate: dataSelecionada ?? agora,
+      initialDate: dataAtual ?? (inicial ? dataFinal : dataInicial) ?? agora,
       firstDate: DateTime(2000),
       lastDate: agora,
       locale: const Locale('pt', 'BR'),
@@ -65,7 +68,21 @@ class _HistoricoDesperdicioPageState
 
     if (selecionada != null) {
       setState(() {
-        dataSelecionada = selecionada;
+        if (inicial) {
+          dataInicial = selecionada;
+
+          if (dataFinal != null &&
+              dataFinal!.isBefore(selecionada)) {
+            dataFinal = selecionada;
+          }
+        } else {
+          dataFinal = selecionada;
+
+          if (dataInicial != null &&
+              dataInicial!.isAfter(selecionada)) {
+            dataInicial = selecionada;
+          }
+        }
       });
     }
   }
@@ -124,28 +141,27 @@ class _HistoricoDesperdicioPageState
             ),
           ),
 
-          // FILTRO POR DATA
+          // FILTRO POR PERÍODO
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
             child: Row(
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: selecionarData,
+                    onPressed: () => selecionarData(true),
                     icon: const Icon(
                       Icons.calendar_month_outlined,
                       color: azulPrincipal,
                     ),
                     label: Text(
-                      dataSelecionada == null
-                          ? 'Buscar por data'
-                          : 'Data: ${dataSelecionada!.day.toString().padLeft(2, '0')}/'
-                              '${dataSelecionada!.month.toString().padLeft(2, '0')}/'
-                              '${dataSelecionada!.year}',
+                      dataInicial == null
+                          ? 'Data inicial'
+                          : 'Início: ${formatarData(Timestamp.fromDate(dataInicial!))}',
                       style: const TextStyle(
                         color: azulPrincipal,
-                        fontSize: 13,
+                        fontSize: 12,
                       ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: borda),
@@ -156,12 +172,40 @@ class _HistoricoDesperdicioPageState
                     ),
                   ),
                 ),
-                if (dataSelecionada != null)
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => selecionarData(false),
+                    icon: const Icon(
+                      Icons.calendar_month_outlined,
+                      color: azulPrincipal,
+                    ),
+                    label: Text(
+                      dataFinal == null
+                          ? 'Data final'
+                          : 'Fim: ${formatarData(Timestamp.fromDate(dataFinal!))}',
+                      style: const TextStyle(
+                        color: azulPrincipal,
+                        fontSize: 12,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: borda),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+                if (dataInicial != null || dataFinal != null)
                   IconButton(
-                    tooltip: 'Limpar data',
+                    tooltip: 'Limpar período',
                     onPressed: () {
                       setState(() {
-                        dataSelecionada = null;
+                        dataInicial = null;
+                        dataFinal = null;
                       });
                     },
                     icon: const Icon(
@@ -263,12 +307,30 @@ class _HistoricoDesperdicioPageState
 
                       final valorData = dados['dataDesperdicio'];
 
-                      // Filtro independente por data
-                      final correspondeData = dataSelecionada == null ||
-                          (valorData is Timestamp &&
-                              valorData.toDate().year == dataSelecionada!.year &&
-                              valorData.toDate().month == dataSelecionada!.month &&
-                              valorData.toDate().day == dataSelecionada!.day);
+                      final dataRegistro =
+                          valorData is Timestamp ? valorData.toDate() : null;
+
+                      final inicio = dataInicial == null
+                          ? null
+                          : DateTime(
+                              dataInicial!.year,
+                              dataInicial!.month,
+                              dataInicial!.day,
+                            );
+
+                      final fimExclusivo = dataFinal == null
+                          ? null
+                          : DateTime(
+                              dataFinal!.year,
+                              dataFinal!.month,
+                              dataFinal!.day + 1,
+                            );
+
+                      final correspondeData =
+                          (inicio == null || (dataRegistro != null &&
+                              !dataRegistro.isBefore(inicio))) &&
+                          (fimExclusivo == null || (dataRegistro != null &&
+                              dataRegistro.isBefore(fimExclusivo)));
 
                       return correspondePesquisa &&
                           correspondeMotivo &&
@@ -342,7 +404,7 @@ class _HistoricoDesperdicioPageState
                                       children: [
                                         Icon(
                                           pesquisa.isEmpty &&
-                                                  dataSelecionada == null &&
+                                                  dataInicial == null && dataFinal == null &&
                                                   motivoAtual == null
                                               ? Icons.history
                                               : Icons.search_off,
@@ -354,7 +416,7 @@ class _HistoricoDesperdicioPageState
                                         const SizedBox(height: 12),
                                         Text(
                                           pesquisa.isEmpty &&
-                                                  dataSelecionada == null &&
+                                                  dataInicial == null && dataFinal == null &&
                                                   motivoAtual == null
                                               ? 'Nenhum desperdício registrado.'
                                               : 'Nenhum resultado encontrado para os filtros selecionados.',

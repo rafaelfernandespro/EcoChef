@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class ForgotPasswordPage extends StatefulWidget {
   const ForgotPasswordPage({super.key});
@@ -11,6 +12,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   final TextEditingController emailController = TextEditingController();
 
   final _formKey = GlobalKey<FormState>();
+  bool _carregando = false;
 
   @override
   void dispose() {
@@ -18,20 +20,63 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     super.dispose();
   }
 
-  void enviarCodigo() {
-    if (_formKey.currentState!.validate()) {
-      final email = emailController.text.trim();
+  Future<void> enviarCodigo() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
 
-      // Por enquanto, apenas demonstração.
-      // Futuramente vocês podem chamar a API aqui.
+    setState(() {
+      _carregando = true;
+    });
+
+    final email = emailController.text.trim();
+
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(
+        email: email,
+      );
+
+      if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+        const SnackBar(
           content: Text(
-            'Código enviado para $email',
+            'Se houver uma conta associada a esse e-mail, você receberá um link de recuperação.',
           ),
-          backgroundColor: const Color(0xFF2563EB),
+          backgroundColor: Color(0xFF2563EB),
         ),
       );
+    } on FirebaseAuthException catch (e) {
+      String mensagem;
+
+      switch (e.code) {
+        case 'invalid-email':
+          mensagem = 'O e-mail informado é inválido.';
+          break;
+
+        case 'too-many-requests':
+          mensagem = 'Muitas tentativas. Tente novamente mais tarde.';
+          break;
+
+        case 'network-request-failed':
+          mensagem = 'Verifique sua conexão com a internet.';
+          break;
+
+        default:
+          mensagem = 'Não foi possível enviar o link. Tente novamente.';
+      }
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(mensagem)),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _carregando = false;
+        });
+      }
     }
   }
 
@@ -121,7 +166,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                         const SizedBox(height: 6),
 
                         const Text(
-                          'Informe seu e-mail para receber um código de recuperação',
+                          'Informe seu e-mail para receber um link de recuperação de senha.',
                           style: TextStyle(
                             fontSize: 13,
                             color: Color(0xFF64748B),
@@ -225,7 +270,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                           width: double.infinity,
                           height: 48,
                           child: ElevatedButton(
-                            onPressed: enviarCodigo,
+                            onPressed: _carregando ? null : enviarCodigo,
 
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF2563EB),
@@ -238,13 +283,22 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                               ),
                             ),
 
-                            child: const Text(
-                              'Enviar código',
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
+                            child: _carregando
+                              ? const SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text(
+                                  'Enviar link de recuperação',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
                           ),
                         ),
                       ],
