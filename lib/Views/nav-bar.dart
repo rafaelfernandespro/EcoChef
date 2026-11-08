@@ -8,6 +8,7 @@ import 'home-page.dart';
 import 'usuarios/gerenciar-usuario.dart';
 import 'estoque-page.dart';
 import 'desperdicio/desperdicio-page.dart';
+import 'relatorios-page.dart';
 
 class HomeNavigationPage extends StatefulWidget {
   const HomeNavigationPage({super.key});
@@ -102,12 +103,8 @@ class _HomeNavigationPageState
           const DesperdicioPage(),
 
           // RELATÓRIOS
-          const _PaginaPlaceholder(
-            titulo: 'Relatórios',
-            icone: Icons.bar_chart_outlined,
-            descricao:
-                'Acompanhe os indicadores e as estatísticas.',
-          ),
+          // RELATÓRIOS
+          const RelatoriosPage(),
 
           // USUÁRIOS
           if (_verificandoPermissao)

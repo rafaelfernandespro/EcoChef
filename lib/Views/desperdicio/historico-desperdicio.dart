@@ -19,7 +19,10 @@ class HistoricoDesperdicioPage extends StatefulWidget {
 class _HistoricoDesperdicioPageState
     extends State<HistoricoDesperdicioPage> {
   final pesquisaController = TextEditingController();
+
   String pesquisa = '';
+  DateTime? dataSelecionada;
+  String? motivoSelecionado;
 
   @override
   void dispose() {
@@ -35,6 +38,36 @@ class _HistoricoDesperdicioPageState
     return '${data.day.toString().padLeft(2, '0')}/'
         '${data.month.toString().padLeft(2, '0')}/'
         '${data.year}';
+  }
+
+  Future<void> selecionarData() async {
+    final agora = DateTime.now();
+
+    final selecionada = await showDatePicker(
+      context: context,
+      initialDate: dataSelecionada ?? agora,
+      firstDate: DateTime(2000),
+      lastDate: agora,
+      locale: const Locale('pt', 'BR'),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: azulPrincipal,
+              onPrimary: Colors.white,
+              onSurface: textoPrincipal,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (selecionada != null) {
+      setState(() {
+        dataSelecionada = selecionada;
+      });
+    }
   }
 
   String formatarQuantidade(dynamic valor) {
@@ -72,7 +105,7 @@ class _HistoricoDesperdicioPageState
                 });
               },
               decoration: InputDecoration(
-                hintText: 'Pesquisar produto ou motivo...',
+                hintText: 'Pesquisar produto',
                 prefixIcon: const Icon(
                   Icons.search,
                   color: textoSecundario,
@@ -90,6 +123,56 @@ class _HistoricoDesperdicioPageState
               ),
             ),
           ),
+
+          // FILTRO POR DATA
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: selecionarData,
+                    icon: const Icon(
+                      Icons.calendar_month_outlined,
+                      color: azulPrincipal,
+                    ),
+                    label: Text(
+                      dataSelecionada == null
+                          ? 'Buscar por data'
+                          : 'Data: ${dataSelecionada!.day.toString().padLeft(2, '0')}/'
+                              '${dataSelecionada!.month.toString().padLeft(2, '0')}/'
+                              '${dataSelecionada!.year}',
+                      style: const TextStyle(
+                        color: azulPrincipal,
+                        fontSize: 13,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: borda),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+                if (dataSelecionada != null)
+                  IconButton(
+                    tooltip: 'Limpar data',
+                    onPressed: () {
+                      setState(() {
+                        dataSelecionada = null;
+                      });
+                    },
+                    icon: const Icon(
+                      Icons.close,
+                      color: textoSecundario,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+
           Expanded(
             child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
               stream: FirebaseFirestore.instance
@@ -142,6 +225,22 @@ class _HistoricoDesperdicioPageState
 
                     final documentos = snapshot.data!.docs;
 
+                    // OBTÉM OS MOTIVOS EXISTENTES NO HISTÓRICO
+                    final motivos = documentos
+                        .map((doc) =>
+                            doc.data()['motivo']?.toString().trim() ?? '')
+                        .where((motivo) => motivo.isNotEmpty)
+                        .toSet()
+                        .toList()
+                      ..sort(
+                        (a, b) => a.toLowerCase().compareTo(b.toLowerCase()),
+                      );
+
+                    final motivoAtual = motivos.contains(motivoSelecionado)
+                        ? motivoSelecionado
+                        : null;
+
+                    // APLICA OS FILTROS
                     final filtrados = documentos.where((doc) {
                       final dados = doc.data();
 
@@ -149,105 +248,196 @@ class _HistoricoDesperdicioPageState
                           dados['produtoId']?.toString() ?? '';
 
                       final nomeProduto =
-                          nomesProdutos[produtoId]?['nome']
-                                  ?.toString() ??
+                          nomesProdutos[produtoId]?['nome']?.toString() ??
                               'Produto não encontrado';
 
-                      final motivo =
-                          dados['motivo']?.toString() ?? '';
+                      final motivo = dados['motivo']?.toString() ?? '';
 
-                      return nomeProduto.toLowerCase().contains(pesquisa) ||
-                          motivo.toLowerCase().contains(pesquisa);
+                      // Pesquisa somente pelo nome do produto
+                      final correspondePesquisa =
+                          nomeProduto.toLowerCase().contains(pesquisa);
+
+                      // Filtro independente por motivo
+                      final correspondeMotivo = motivoAtual == null ||
+                          motivo == motivoAtual;
+
+                      final valorData = dados['dataDesperdicio'];
+
+                      // Filtro independente por data
+                      final correspondeData = dataSelecionada == null ||
+                          (valorData is Timestamp &&
+                              valorData.toDate().year == dataSelecionada!.year &&
+                              valorData.toDate().month == dataSelecionada!.month &&
+                              valorData.toDate().day == dataSelecionada!.day);
+
+                      return correspondePesquisa &&
+                          correspondeMotivo &&
+                          correspondeData;
                     }).toList();
 
-                    if (filtrados.isEmpty) {
-                      return Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                pesquisa.isEmpty
-                                    ? Icons.history
-                                    : Icons.search_off,
-                                size: 48,
-                                color: textoSecundario.withValues(alpha: 0.6),
+                    return Column(
+                      children: [
+                        // SELETOR DE MOTIVOS
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                          child: DropdownButtonFormField<String>(
+                            value: motivoAtual ?? '',
+                            isExpanded: true,
+                            decoration: InputDecoration(
+                              labelText: 'Filtrar por motivo',
+                              prefixIcon: const Icon(
+                                Icons.filter_list,
+                                color: textoSecundario,
                               ),
-                              const SizedBox(height: 12),
-                              Text(
-                                pesquisa.isEmpty
-                                    ? 'Nenhum desperdício registrado.'
-                                    : 'Nenhum resultado encontrado.',
-                                style: const TextStyle(
-                                  color: textoSecundario,
-                                  fontSize: 14,
+                              filled: true,
+                              fillColor: Colors.white,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 13,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: const BorderSide(color: borda),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: const BorderSide(color: borda),
+                              ),
+                            ),
+                            hint: const Text('Todos os motivos'),
+                            items: [
+                              const DropdownMenuItem<String>(
+                                value: '',
+                                child: Text('Todos os motivos'),
+                              ),
+                              ...motivos.map(
+                                (motivo) => DropdownMenuItem<String>(
+                                  value: motivo,
+                                  child: Text(
+                                    motivo,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
-                                textAlign: TextAlign.center,
                               ),
                             ],
+                            onChanged: (valor) {
+                              setState(() {
+                                motivoSelecionado =
+                                    valor == null || valor.isEmpty
+                                        ? null
+                                        : valor;
+                              });
+                            },
                           ),
                         ),
-                      );
-                    }
 
-                    return ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-                      itemCount: filtrados.length,
-                      separatorBuilder: (_, __) =>
-                          const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        final doc = filtrados[index];
-                        final dados = doc.data();
+                        // LISTA DE DESPERDÍCIOS
+                        Expanded(
+                          child: filtrados.isEmpty
+                              ? Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(24),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          pesquisa.isEmpty &&
+                                                  dataSelecionada == null &&
+                                                  motivoAtual == null
+                                              ? Icons.history
+                                              : Icons.search_off,
+                                          size: 48,
+                                          color: textoSecundario.withValues(
+                                            alpha: 0.6,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Text(
+                                          pesquisa.isEmpty &&
+                                                  dataSelecionada == null &&
+                                                  motivoAtual == null
+                                              ? 'Nenhum desperdício registrado.'
+                                              : 'Nenhum resultado encontrado para os filtros selecionados.',
+                                          style: const TextStyle(
+                                            color: textoSecundario,
+                                            fontSize: 14,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                )
+                              : ListView.separated(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    20,
+                                    8,
+                                    20,
+                                    24,
+                                  ),
+                                  itemCount: filtrados.length,
+                                  separatorBuilder: (_, __) =>
+                                      const SizedBox(height: 12),
+                                  itemBuilder: (context, index) {
+                                    final doc = filtrados[index];
+                                    final dados = doc.data();
 
-                        final produtoId =
-                            dados['produtoId']?.toString() ?? '';
+                                    final produtoId =
+                                        dados['produtoId']?.toString() ?? '';
 
-                        final produto = nomesProdutos[produtoId];
+                                    final produto = nomesProdutos[produtoId];
 
-                        final nomeProduto =
-                            produto?['nome']?.toString() ??
-                                'Produto não encontrado';
+                                    final nomeProduto =
+                                        produto?['nome']?.toString() ??
+                                            'Produto não encontrado';
 
-                        final unidade =
-                            produto?['unidade']?.toString() ?? 'unidade';
+                                    final unidade =
+                                        produto?['unidade']?.toString() ??
+                                            'unidade';
 
-                        final motivo =
-                            dados['motivo']?.toString() ?? 'Sem motivo';
+                                    final motivo =
+                                        dados['motivo']?.toString() ??
+                                            'Sem motivo';
 
-                        final quantidade =
-                            formatarQuantidade(dados['quantidade']);
+                                    final quantidade = formatarQuantidade(
+                                      dados['quantidade'],
+                                    );
 
-                        final data =
-                            formatarData(dados['dataDesperdicio']);
+                                    final data = formatarData(
+                                      dados['dataDesperdicio'],
+                                    );
 
-                        // Documentos antigos sem o campo continuam
-                        // sendo considerados como baixa de estoque.
-                        final afetaEstoque =
-                            dados['afetaEstoque'] != false;
+                                    // DOCUMENTOS ANTIGOS SEM O CAMPO CONTINUAM
+                                    // SENDO CONSIDERADOS COMO BAIXA DE ESTOQUE.
+                                    final afetaEstoque =
+                                        dados['afetaEstoque'] != false;
 
-                        return _cardDesperdicio(
-                          nomeProduto: nomeProduto,
-                          motivo: motivo,
-                          quantidade: quantidade,
-                          unidade: unidade,
-                          data: data,
-                          afetaEstoque: afetaEstoque,
-                          aoTocar: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => DetalhesDesperdicioPage(
-                                  desperdicioId: doc.id,
-                                  dados: dados,
-                                  nomeProduto: nomeProduto,
-                                  unidade: unidade,
+                                    return _cardDesperdicio(
+                                      nomeProduto: nomeProduto,
+                                      motivo: motivo,
+                                      quantidade: quantidade,
+                                      unidade: unidade,
+                                      data: data,
+                                      afetaEstoque: afetaEstoque,
+                                      aoTocar: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) =>
+                                                DetalhesDesperdicioPage(
+                                              desperdicioId: doc.id,
+                                              dados: dados,
+                                              nomeProduto: nomeProduto,
+                                              unidade: unidade,
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    );
+                                  },
                                 ),
-                              ),
-                            );
-                          },
-                        );
-                      },
+                        ),
+                      ],
                     );
                   },
                 );
