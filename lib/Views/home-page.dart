@@ -563,7 +563,9 @@ class _HomePageState extends State<HomePage> {
                   const SizedBox(height: 20),
 
                   // INDICADORES PRINCIPAIS.
-                  Row(
+                  IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Expanded(
                         child: _kpi(
@@ -598,7 +600,8 @@ class _HomePageState extends State<HomePage> {
                           cor: const Color(0xFFD97706),
                         ),
                       ),
-                    ],
+                      ]
+                    ),
                   ),
 
                   const SizedBox(height: 12),
