@@ -770,6 +770,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   // CARDS DE INDICADORES.
+  
   Widget _kpi({
     required String titulo,
     required String valor,
@@ -800,16 +801,24 @@ class _HomePageState extends State<HomePage> {
 
           const SizedBox(height: 12),
 
-          Text(
-            titulo,
-            style: const TextStyle(
-              fontSize: 12,
-              color: textoSecundario,
+          // TÍTULO COM ALTURA PADRONIZADA
+          SizedBox(
+            height: 30,
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: Text(
+                titulo,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: textoSecundario,
+                ),
+              ),
             ),
           ),
 
           const SizedBox(height: 5),
 
+          // VALOR
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
@@ -825,6 +834,7 @@ class _HomePageState extends State<HomePage> {
 
           const SizedBox(height: 4),
 
+          // DESCRIÇÃO
           Text(
             descricao,
             style: const TextStyle(
@@ -836,6 +846,7 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
+
 
   
   // CARD ESTENDIDO DE DESPERDÍCIO.

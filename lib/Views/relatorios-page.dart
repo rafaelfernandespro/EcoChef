@@ -337,13 +337,14 @@ class _RelatoriosPageState extends State<RelatoriosPage> {
     );
   }
 
+  
   Widget _graficoEvolucao(List<_RegistroDesperdicio> dados) {
     final filtrados = dados
         .where((item) => item.unidade == unidadeSelecionada)
         .toList();
 
     final quantidadeBarras =
-      periodo == PeriodoRelatorio.semana ? 7 : 10;
+        periodo == PeriodoRelatorio.semana ? 7 : 10;
 
     final diasPeriodo = switch (periodo) {
       PeriodoRelatorio.semana => 7,
@@ -351,24 +352,30 @@ class _RelatoriosPageState extends State<RelatoriosPage> {
       PeriodoRelatorio.trimestre => 90,
     };
 
-    final diasPorBarra = diasPeriodo ~/ quantidadeBarras;
     final inicio = dataInicial;
 
     final intervalos = <_Intervalo>[];
 
     for (int i = 0; i < quantidadeBarras; i++) {
+      // Divide o período proporcionalmente entre as barras.
+      // Assim, nenhum dia fica de fora.
+      final diaInicial = (i * diasPeriodo) ~/ quantidadeBarras;
+      final diaFinal = ((i + 1) * diasPeriodo) ~/ quantidadeBarras;
+
       final inicioIntervalo = inicio.add(
-        Duration(days: i * diasPorBarra),
+        Duration(days: diaInicial),
       );
 
-      final fimIntervalo = inicioIntervalo.add(
-        Duration(days: diasPorBarra),
+      final fimIntervalo = inicio.add(
+        Duration(days: diaFinal),
       );
 
       final valor = filtrados
-          .where((item) =>
-              !item.data.isBefore(inicioIntervalo) &&
-              item.data.isBefore(fimIntervalo))
+          .where(
+            (item) =>
+                !item.data.isBefore(inicioIntervalo) &&
+                item.data.isBefore(fimIntervalo),
+          )
           .fold<double>(
             0,
             (total, item) => total + item.quantidade,
@@ -413,7 +420,9 @@ class _RelatoriosPageState extends State<RelatoriosPage> {
               ),
             ],
           ),
+
           const SizedBox(height: 25),
+
           SizedBox(
             height: 175,
             child: Row(
@@ -428,20 +437,33 @@ class _RelatoriosPageState extends State<RelatoriosPage> {
 
                 return Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 3),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 2,
+                    ),
+
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        Text(
-                          _formatar(item.valor),
-                          style: const TextStyle(
-                            color: textoSecundario,
-                            fontSize: 9,
+                        // VALOR ACIMA DA BARRA
+                        SizedBox(
+                          width: double.infinity,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              _formatar(item.valor),
+                              maxLines: 1,
+                              softWrap: false,
+                              style: const TextStyle(
+                                color: textoSecundario,
+                                fontSize: 9,
+                              ),
+                            ),
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                         ),
+
                         const SizedBox(height: 5),
+
+                        // BARRA
                         Container(
                           height: altura,
                           decoration: BoxDecoration(
@@ -449,12 +471,23 @@ class _RelatoriosPageState extends State<RelatoriosPage> {
                             borderRadius: BorderRadius.circular(6),
                           ),
                         ),
+
                         const SizedBox(height: 8),
-                        Text(
-                          item.legenda,
-                          style: const TextStyle(
-                            color: textoSecundario,
-                            fontSize: 9,
+
+                        // DATA ABAIXO DA BARRA
+                        SizedBox(
+                          width: double.infinity,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              item.legenda,
+                              maxLines: 1,
+                              softWrap: false,
+                              style: const TextStyle(
+                                color: textoSecundario,
+                                fontSize: 9,
+                              ),
+                            ),
                           ),
                         ),
                       ],
@@ -464,6 +497,7 @@ class _RelatoriosPageState extends State<RelatoriosPage> {
               }).toList(),
             ),
           ),
+
           if (filtrados.isEmpty)
             const Padding(
               padding: EdgeInsets.only(top: 12),
@@ -479,6 +513,7 @@ class _RelatoriosPageState extends State<RelatoriosPage> {
       ),
     );
   }
+
 
   
 Widget _graficoMotivos(List<_RegistroDesperdicio> dados) {

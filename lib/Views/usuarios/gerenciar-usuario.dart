@@ -65,7 +65,7 @@ class _ListaFuncionariosScreenState
     final buscaSemPontuacao =
         busca.replaceAll(RegExp(r'\D'), '');
 
-    return documentos.where((documento) {
+    final resultado = documentos.where((documento) {
       final dados = documento.data();
 
       final nome =
@@ -75,7 +75,6 @@ class _ListaFuncionariosScreenState
           (dados['email'] ?? '').toString().toLowerCase();
 
       final cpf = (dados['cpf'] ?? '').toString();
-
       final cpfNumeros = cpf.replaceAll(RegExp(r'\D'), '');
 
       final tipo = normalizarTipo(
@@ -107,6 +106,30 @@ class _ListaFuncionariosScreenState
           correspondeStatus &&
           correspondeTipo;
     }).toList();
+
+    resultado.sort((a, b) {
+      final dadosA = a.data();
+      final dadosB = b.data();
+
+      final ativoA = dadosA['ativo'] == true;
+      final ativoB = dadosB['ativo'] == true;
+
+      // Ativos primeiro.
+      if (ativoA != ativoB) {
+        return ativoA ? -1 : 1;
+      }
+
+      // Ordem alfabética.
+      final nomeA =
+          (dadosA['nomeCompleto'] ?? '').toString().toLowerCase();
+
+      final nomeB =
+          (dadosB['nomeCompleto'] ?? '').toString().toLowerCase();
+
+      return nomeA.compareTo(nomeB);
+    });
+
+    return resultado;
   }
 
   // Exibe mensagens para o usuário.
@@ -197,9 +220,9 @@ class _ListaFuncionariosScreenState
     // Impede que o administrador desative a própria conta.
     final usuarioLogado = FirebaseAuth.instance.currentUser;
 
-    if (usuarioLogado?.uid == documento.id && ativoAtual) {
+    if (usuarioLogado?.uid == documento.id) {
       mostrarMensagem(
-        'Você não pode desativar sua própria conta.',
+        'Você não pode alterar o status da própria conta.',
         erro: true,
       );
       return;
@@ -234,6 +257,17 @@ class _ListaFuncionariosScreenState
   Future<void> editarFuncionario(
     QueryDocumentSnapshot<Map<String, dynamic>> documento,
   ) async {
+
+    final usuarioLogado = FirebaseAuth.instance.currentUser;
+
+    if (usuarioLogado?.uid == documento.id) {
+      mostrarMensagem(
+        'Você não pode editar sua própria conta.',
+        erro: true,
+      );
+      return;
+    }
+
     final dados = documento.data();
 
     final nomeController = TextEditingController(
@@ -792,6 +826,8 @@ class _ListaFuncionariosScreenState
                   else
                     ...lista.map((documento) {
                       final dados = documento.data();
+                      final ehUsuarioLogado =
+                        FirebaseAuth.instance.currentUser?.uid == documento.id;
 
                       final nome =
                           (dados['nomeCompleto'] ?? '').toString();
@@ -924,55 +960,54 @@ class _ListaFuncionariosScreenState
                               ],
                             ),
 
-                            const SizedBox(height: 12),
+                            if (!ehUsuarioLogado) ...[
+                              const SizedBox(height: 12),
 
-                            const Divider(
-                              color: Color(0xFFE2E8F0),
-                            ),
+                              const Divider(
+                                color: Color(0xFFE2E8F0),
+                              ),
 
-                            const SizedBox(height: 4),
+                              const SizedBox(height: 4),
 
-                            // AÇÕES
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: TextButton.icon(
-                                    onPressed: () =>
-                                        editarFuncionario(documento),
-                                    icon: const Icon(
-                                      Icons.edit_outlined,
-                                      size: 18,
-                                    ),
-                                    label: const Text('Editar'),
-                                    style: TextButton.styleFrom(
-                                      foregroundColor:
-                                          const Color(0xFF2563EB),
+                              // AÇÕES
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextButton.icon(
+                                      onPressed: () => editarFuncionario(documento),
+                                      icon: const Icon(
+                                        Icons.edit_outlined,
+                                        size: 18,
+                                      ),
+                                      label: const Text('Editar'),
+                                      style: TextButton.styleFrom(
+                                        foregroundColor: const Color(0xFF2563EB),
+                                      ),
                                     ),
                                   ),
-                                ),
 
-                                Expanded(
-                                  child: TextButton.icon(
-                                    onPressed: () =>
-                                        alterarStatus(documento),
-                                    icon: Icon(
-                                      ativo
-                                          ? Icons.person_off_outlined
-                                          : Icons.person_outline,
-                                      size: 18,
-                                    ),
-                                    label: Text(
-                                      ativo ? 'Inativar' : 'Reativar',
-                                    ),
-                                    style: TextButton.styleFrom(
-                                      foregroundColor: ativo
-                                          ? const Color(0xFFB45309)
-                                          : const Color(0xFF15803D),
+                                  Expanded(
+                                    child: TextButton.icon(
+                                      onPressed: () => alterarStatus(documento),
+                                      icon: Icon(
+                                        ativo
+                                            ? Icons.person_off_outlined
+                                            : Icons.person_outline,
+                                        size: 18,
+                                      ),
+                                      label: Text(
+                                        ativo ? 'Inativar' : 'Reativar',
+                                      ),
+                                      style: TextButton.styleFrom(
+                                        foregroundColor: ativo
+                                            ? const Color(0xFFB45309)
+                                            : const Color(0xFF15803D),
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ],
-                            ),
+                                ],
+                              ),
+                            ],
                           ],
                         ),
                       );

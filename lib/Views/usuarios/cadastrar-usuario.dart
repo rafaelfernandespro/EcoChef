@@ -392,6 +392,8 @@ class _CadastroUsuariosScreenState
         'Usuário cadastrado com sucesso!',
         cor: const Color(0xFF16A34A),
       );
+      Navigator.pop(context, true);
+      
     } on FirebaseAuthException catch (e) {
       bool contaRemovida = true;
 
@@ -542,40 +544,6 @@ class _CadastroUsuariosScreenState
                 ),
 
                 const SizedBox(height: 12),
-
-                // IDENTIDADE VISUAL
-                Image.asset(
-                  'assets/images/logo.png',
-                  width: 90,
-                  errorBuilder: (context, error, stackTrace) {
-                    return const Icon(
-                      Icons.restaurant_menu,
-                      size: 64,
-                      color: Color(0xFF2563EB),
-                    );
-                  },
-                ),
-
-                const SizedBox(height: 8),
-
-                const Text(
-                  'EcoChef',
-                  style: TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF1E3A8A),
-                  ),
-                ),
-
-                const SizedBox(height: 4),
-
-                const Text(
-                  'Gestão de usuários do sistema',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Color(0xFF64748B),
-                  ),
-                ),
 
                 const SizedBox(height: 28),
 
