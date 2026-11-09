@@ -43,13 +43,23 @@ class ProdutoEstoque {
 }
 
 class EstoquePage extends StatefulWidget {
-  const EstoquePage({super.key});
+  final int animationKey;
+
+  const EstoquePage({
+    super.key,
+    this.animationKey = 0,
+  });
 
   @override
   State<EstoquePage> createState() => _EstoquePageState();
 }
 
-class _EstoquePageState extends State<EstoquePage> {
+class _EstoquePageState extends State<EstoquePage>
+  with SingleTickerProviderStateMixin {
+
+  late final AnimationController _animacaoController;
+  bool _animacaoInicialIniciada = false;
+
   final TextEditingController pesquisaController =
       TextEditingController();
 
@@ -97,14 +107,28 @@ class _EstoquePageState extends State<EstoquePage> {
     'unidade',
   ];
 
-  @override
+ @override
   void initState() {
     super.initState();
+
+    _animacaoController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 650),
+    );
 
     _ouvirProdutos();
     _ouvirEntradas();
     _ouvirSaidas();
     _ouvirDesperdicios();
+  }
+
+  @override
+  void didUpdateWidget(covariant EstoquePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.animationKey != widget.animationKey) {
+      _animacaoController.forward(from: 0);
+    }
   }
 
   // Normaliza nomes para comparação.
@@ -382,6 +406,11 @@ class _EstoquePageState extends State<EstoquePage> {
       carregando = false;
       erroCarregamento = null;
     });
+
+    if (!_animacaoInicialIniciada) {
+      _animacaoInicialIniciada = true;
+      _animacaoController.forward(from: 0);
+    }
   }
 
   // Calcula o estoque disponível de cada produto.
@@ -431,6 +460,7 @@ class _EstoquePageState extends State<EstoquePage> {
     _desperdiciosSubscription?.cancel();
 
     pesquisaController.dispose();
+    _animacaoController.dispose();
 
     super.dispose();
   }
@@ -1138,9 +1168,35 @@ class _EstoquePageState extends State<EstoquePage> {
                 sliver: SliverList(
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _cardProduto(lista[index]),
+                      final inicio = (index * 0.10).clamp(0.0, 0.65);
+                      final fim = (inicio + 0.35).clamp(0.0, 1.0);
+
+                      final animacao = CurvedAnimation(
+                        parent: _animacaoController,
+                        curve: Interval(
+                          inicio,
+                          fim,
+                          curve: Curves.easeOutCubic,
+                        ),
+                      );
+
+                      return AnimatedBuilder(
+                        animation: _animacaoController,
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _cardProduto(lista[index]),
+                        ),
+                        builder: (context, child) {
+                          final progresso = animacao.value;
+
+                          return Opacity(
+                            opacity: progresso,
+                            child: Transform.translate(
+                              offset: Offset(0, 18 * (1 - progresso)),
+                              child: child,
+                            ),
+                          );
+                        },
                       );
                     },
                     childCount: lista.length,

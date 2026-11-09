@@ -18,6 +18,8 @@ class HomeNavigationPage extends StatefulWidget {
 
 class _HomeNavigationPageState extends State<HomeNavigationPage> {
   int paginaSelecionada = 0;
+  int _homeAnimationKey = 0;
+  int _estoqueAnimationKey = 0;
 
   bool carregandoPerfil = true;
   bool ehAdmin = false;
@@ -87,10 +89,15 @@ class _HomeNavigationPageState extends State<HomeNavigationPage> {
 
   // Controla a seleção das páginas disponíveis.
   void selecionarPagina(int index) {
-    setState(() {
-      paginaSelecionada = index;
-    });
-  }
+  setState(() {
+    // Reinicia a Home sempre que o usuário voltar para ela.
+    if (index == 0 && paginaSelecionada != 0) {
+      _homeAnimationKey++;
+    }
+
+    paginaSelecionada = index;
+  });
+}
 
   @override
   Widget build(BuildContext context) {
@@ -153,15 +160,23 @@ class _HomeNavigationPageState extends State<HomeNavigationPage> {
     // Páginas disponíveis para cada perfil.
     final List<Widget> paginas = ehAdmin
         ? [
-            const HomePage(),
-            const EstoquePage(),
+            HomePage(
+              key: ValueKey('home-$_homeAnimationKey'),
+            ),
+            EstoquePage(
+              animationKey: _estoqueAnimationKey,
+            ),
             const DesperdicioPage(),
             const RelatoriosPage(),
             const ListaFuncionariosScreen(),
           ]
         : [
-            const HomePage(),
-            const EstoquePage(),
+            HomePage(
+              key: ValueKey('home-$_homeAnimationKey'),
+            ),
+            EstoquePage(
+              animationKey: _estoqueAnimationKey,
+            ),
             const DesperdicioPage(),
           ];
 

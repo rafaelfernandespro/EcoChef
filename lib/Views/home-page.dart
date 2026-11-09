@@ -19,8 +19,56 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
-  bool _mostrarTodosAlertas = false;
+  class _HomePageState extends State<HomePage>
+      with SingleTickerProviderStateMixin {
+    bool _mostrarTodosAlertas = false;
+    bool _animacaoIniciada = false;
+
+    late final AnimationController _entradaController;
+
+    @override
+    void initState() {
+      super.initState();
+
+      _entradaController = AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 900),
+      );
+    }
+
+    @override
+    void dispose() {
+      _entradaController.dispose();
+      super.dispose();
+    }
+
+    Widget _animarEntrada({
+      required int ordem,
+      required Widget child,
+    }) {
+      final inicio = (ordem * 0.12).clamp(0.0, 0.85);
+      final fim = (inicio + 0.40).clamp(0.0, 1.0);
+
+      final animacao = CurvedAnimation(
+        parent: _entradaController,
+        curve: Interval(
+          inicio,
+          fim,
+          curve: Curves.easeOutCubic,
+        ),
+      );
+
+      return FadeTransition(
+        opacity: animacao,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, 0.08),
+            end: Offset.zero,
+          ).animate(animacao),
+          child: child,
+        ),
+      );
+    }
 
   @override
   Widget build(BuildContext context) {
@@ -95,6 +143,17 @@ class _HomePageState extends State<HomePage> {
     List<QueryDocumentSnapshot<Map<String, dynamic>>> entradasDocs,
     List<QueryDocumentSnapshot<Map<String, dynamic>>> desperdiciosDocs,
   ) {
+
+    if (!_animacaoIniciada) {
+      _animacaoIniciada = true;
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _entradaController.forward();
+        }
+      });
+    }
+
     // PRODUTOS ATIVOS.
     final produtosAtivos = produtosDocs.where((doc) {
       return doc.data()['ativo'] != false;
@@ -537,142 +596,170 @@ class _HomePageState extends State<HomePage> {
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
-                  _cabecalho(context),
+                                    // CABEÇALHO
+                  _animarEntrada(
+                    ordem: 0,
+                    child: _cabecalho(context),
+                  ),
 
                   const SizedBox(height: 28),
 
-                  const Text(
-                    'Visão geral',
-                    style: TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.bold,
-                      color: textoPrincipal,
-                    ),
-                  ),
-
-                  const SizedBox(height: 6),
-
-                  const Text(
-                    'Acompanhe seu restaurante hoje.',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: textoSecundario,
+                  // VISÃO GERAL
+                  _animarEntrada(
+                    ordem: 1,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: const [
+                        Text(
+                          'Visão geral',
+                          style: TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.bold,
+                            color: textoPrincipal,
+                          ),
+                        ),
+                        SizedBox(height: 6),
+                        Text(
+                          'Acompanhe seu restaurante hoje.',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: textoSecundario,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
 
                   const SizedBox(height: 20),
 
-                  // INDICADORES PRINCIPAIS.
-                  IntrinsicHeight(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Expanded(
-                        child: _kpi(
-                          titulo: 'Produtos',
-                          valor: '${produtosAtivos.length}',
-                          descricao: 'Cadastrados',
-                          icone: Icons.inventory_2_outlined,
-                          cor: azulPrincipal,
-                        ),
+                  // INDICADORES PRINCIPAIS
+                  _animarEntrada(
+                    ordem: 2,
+                    child: IntrinsicHeight(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            child: _kpi(
+                              titulo: 'Produtos',
+                              valor: '${produtosAtivos.length}',
+                              descricao: 'Cadastrados',
+                              icone: Icons.inventory_2_outlined,
+                              cor: azulPrincipal,
+                            ),
+                          ),
+
+                          const SizedBox(width: 12),
+
+                          Expanded(
+                            child: _kpi(
+                              titulo: 'Itens em falta',
+                              valor: '$itensEmFalta',
+                              descricao: 'Sem estoque disponível',
+                              icone: Icons.warning_amber_rounded,
+                              cor: const Color(0xFFDC2626),
+                            ),
+                          ),
+
+                          const SizedBox(width: 12),
+
+                          Expanded(
+                            child: _kpi(
+                              titulo: 'Estoque baixo',
+                              valor: '$estoqueBaixo',
+                              descricao: 'Abaixo do mínimo',
+                              icone: Icons.trending_down,
+                              cor: const Color(0xFFD97706),
+                            ),
+                          ),
+                        ],
                       ),
-
-                      const SizedBox(width: 12),
-
-                      Expanded(
-                        child: _kpi(
-                          titulo: 'Itens em falta',
-                          valor: '$itensEmFalta',
-                          descricao: 'Sem estoque disponível',
-                          icone: Icons.warning_amber_rounded,
-                          cor: const Color(0xFFDC2626),
-                        ),
-                      ),
-
-                      const SizedBox(width: 12),
-
-                      Expanded(
-                        child: _kpi(
-                          titulo: 'Estoque baixo',
-                          valor: '$estoqueBaixo',
-                          descricao: 'Abaixo do mínimo',
-                          icone: Icons.trending_down,
-                          cor: const Color(0xFFD97706),
-                        ),
-                      ),
-                      ]
                     ),
                   ),
 
                   const SizedBox(height: 12),
 
-                  // DESPERDÍCIO DO DIA.
-                  _cardDesperdicio(
-                    dados: desperdicioOrdenado,
-                    formatarQuantidade: formatarQuantidade,
-                    formatarUnidade: formatarUnidade,
+                  // DESPERDÍCIO DO DIA
+                  _animarEntrada(
+                    ordem: 3,
+                    child: _cardDesperdicio(
+                      dados: desperdicioOrdenado,
+                      formatarQuantidade: formatarQuantidade,
+                      formatarUnidade: formatarUnidade,
+                    ),
                   ),
 
                   const SizedBox(height: 28),
 
-                  _tituloSecao(
-                    'Alertas recentes',
-                    'Ocorrências que precisam de atenção',
+                  // TÍTULO DOS ALERTAS
+                  _animarEntrada(
+                    ordem: 4,
+                    child: _tituloSecao(
+                      'Alertas recentes',
+                      'Ocorrências que precisam de atenção',
+                    ),
                   ),
 
                   const SizedBox(height: 14),
 
-                  // ALERTAS.
+                  // ALERTAS
                   if (alertasWidgets.isEmpty)
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: borda),
-                      ),
-                      child: const Column(
-                        children: [
-                          Icon(
-                            Icons.check_circle_outline,
-                            color: Color(0xFF16A34A),
-                            size: 35,
-                          ),
-
-                          SizedBox(height: 10),
-
-                          Text(
-                            'Tudo em ordem!',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                              color: textoPrincipal,
+                    _animarEntrada(
+                      ordem: 5,
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: borda),
+                        ),
+                        child: const Column(
+                          children: [
+                            Icon(
+                              Icons.check_circle_outline,
+                              color: Color(0xFF16A34A),
+                              size: 35,
                             ),
-                          ),
-
-                          SizedBox(height: 5),
-
-                          Text(
-                            'Não existem alertas para mostrar no momento.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: textoSecundario,
+                            SizedBox(height: 10),
+                            Text(
+                              'Tudo em ordem!',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: textoPrincipal,
+                              ),
                             ),
-                          ),
-                        ],
+                            SizedBox(height: 5),
+                            Text(
+                              'Não existem alertas para mostrar no momento.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: textoSecundario,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     )
                   else ...[
-                    ...alertasWidgets.take(quantidadeVisivel).expand(
-                      (alerta) => [
-                        alerta,
-                        const SizedBox(height: 10),
-                      ],
-                    ),
+                    ...alertasWidgets
+                        .take(quantidadeVisivel)
+                        .toList()
+                        .asMap()
+                        .entries
+                        .expand(
+                          (entrada) => [
+                            _animarEntrada(
+                              ordem: 5 + entrada.key,
+                              child: entrada.value,
+                            ),
+                            const SizedBox(height: 10),
+                          ],
+                        ),
 
-                    // BOTÃO VER MAIS / VER MENOS.
+                    // BOTÃO VER MAIS / VER MENOS
                     if (quantidadeAlertas > 3)
                       Center(
                         child: TextButton.icon(
