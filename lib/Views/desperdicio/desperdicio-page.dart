@@ -12,8 +12,79 @@ const textoPrincipal = Color(0xFF1E293B);
 const textoSecundario = Color(0xFF64748B);
 const borda = Color(0xFFE2E8F0);
 
-class DesperdicioPage extends StatelessWidget {
-  const DesperdicioPage({super.key});
+class DesperdicioPage extends StatefulWidget {
+  final int animationKey;
+
+  const DesperdicioPage({
+    super.key,
+    this.animationKey = 0,
+  });
+
+  @override
+  State<DesperdicioPage> createState() =>
+      _DesperdicioPageState();
+}
+
+class _DesperdicioPageState extends State<DesperdicioPage>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _animacaoController;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _animacaoController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant DesperdicioPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.animationKey != widget.animationKey) {
+      _animacaoController.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _animacaoController.dispose();
+    super.dispose();
+  }
+
+  Widget _animarEntrada({
+    required Widget child,
+    required double inicio,
+    required double fim,
+  }) {
+    return AnimatedBuilder(
+      animation: _animacaoController,
+      child: child,
+      builder: (context, child) {
+        final animacao = CurvedAnimation(
+          parent: _animacaoController,
+          curve: Interval(
+            inicio,
+            fim,
+            curve: Curves.easeOutCubic,
+          ),
+        );
+
+        return Opacity(
+          opacity: animacao.value,
+          child: Transform.translate(
+            offset: Offset(
+              0,
+              22 * (1 - animacao.value),
+            ),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,67 +96,91 @@ class DesperdicioPage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      'Desperdício',
+              _animarEntrada(
+                inicio: 0,
+                fim: 0.45,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Desperdício',
+                            style: TextStyle(
+                              fontSize: 26,
+                              fontWeight: FontWeight.bold,
+                              color: textoPrincipal,
+                            ),
+                          ),
+                        ),
+                        const MenuPerfil(),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Registre e acompanhe as perdas de alimentos.',
                       style: TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.bold,
-                        color: textoPrincipal,
+                        fontSize: 14,
+                        color: textoSecundario,
                       ),
                     ),
-                  ),
-                  const MenuPerfil(),
-                ],
-              ),
-              const SizedBox(height: 6),
-              const Text(
-                'Registre e acompanhe as perdas de alimentos.',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: textoSecundario,
+                  ],
                 ),
               ),
 
               const SizedBox(height: 32),
 
-              _botaoOpcao(
-                contexto: context,
-                icone: Icons.add_circle_outline,
-                titulo: 'Registrar desperdício',
-                descricao:
-                    'Informe os alimentos descartados e o motivo.',
-                cor: azulPrincipal,
-                aoTocar: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          const RegistrarDesperdicioPage(),
-                    ),
-                  );
-                },
+              _animarEntrada(
+                inicio: 0.15,
+                fim: 0.65,
+                child: _botaoOpcao(
+                  contexto: context,
+                  icone: Icons.add_circle_outline,
+                  titulo: 'Registrar desperdício',
+                  descricao:
+                      'Informe os alimentos descartados e o motivo.',
+                  cor: azulPrincipal,
+                  aoTocar: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const RegistrarDesperdicioPage(),
+                      ),
+                    );
+
+                    if (!mounted) return;
+
+                    _animacaoController.forward(from: 0);
+                  },
+                ),
               ),
 
               const SizedBox(height: 16),
 
-              _botaoOpcao(
-                contexto: context,
-                icone: Icons.history,
-                titulo: 'Visualizar histórico',
-                descricao:
-                    'Consulte os desperdícios registrados.',
-                cor: azulEscuro,
-                aoTocar: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const HistoricoDesperdicioPage(),
-                    ),
-                  );
-                },
+              _animarEntrada(
+                inicio: 0.30,
+                fim: 0.80,
+                child: _botaoOpcao(
+                  contexto: context,
+                  icone: Icons.history,
+                  titulo: 'Visualizar histórico',
+                  descricao:
+                      'Consulte os desperdícios registrados.',
+                  cor: azulEscuro,
+                  aoTocar: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const HistoricoDesperdicioPage(),
+                      ),
+                    );
+
+                    if (!mounted) return;
+
+                    _animacaoController.forward(from: 0);
+                  },
+                ),
               ),
             ],
           ),

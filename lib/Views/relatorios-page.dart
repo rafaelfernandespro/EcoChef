@@ -1,3 +1,4 @@
+
 import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -15,15 +16,127 @@ const Color borda = Color(0xFFE2E8F0);
 enum PeriodoRelatorio { semana, mes, trimestre }
 
 class RelatoriosPage extends StatefulWidget {
-  const RelatoriosPage({super.key});
+  final int animationKey;
+
+  const RelatoriosPage({
+    super.key,
+    this.animationKey = 0,
+  });
 
   @override
   State<RelatoriosPage> createState() => _RelatoriosPageState();
 }
 
-class _RelatoriosPageState extends State<RelatoriosPage> {
+class _RelatoriosPageState extends State<RelatoriosPage>
+    with TickerProviderStateMixin {
+  late final AnimationController _animacaoController;
+  late final AnimationController _evolucaoController;
+
   PeriodoRelatorio periodo = PeriodoRelatorio.semana;
   String unidadeSelecionada = 'kg';
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Animação principal da tela.
+    _animacaoController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    );
+
+    // Animação exclusiva das barras da evolução.
+    _evolucaoController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant RelatoriosPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.animationKey != widget.animationKey) {
+      _reiniciarAnimacoes();
+    }
+  }
+
+  @override
+  void dispose() {
+    _animacaoController.dispose();
+    _evolucaoController.dispose();
+    super.dispose();
+  }
+
+  // Reinicia as duas animações ao entrar novamente na tela.
+  void _reiniciarAnimacoes() {
+    _animacaoController.forward(from: 0);
+    _evolucaoController.forward(from: 0);
+  }
+
+  // Reinicia somente as barras da evolução ao clicar nos filtros.
+  void _reiniciarAnimacaoEvolucao() {
+    _evolucaoController.forward(from: 0);
+  }
+
+  // Progresso das barras do gráfico de motivos.
+  double _progressoAnimacao(int indice, int total) {
+    final inicio = total <= 1 ? 0.0 : (indice / total) * 0.45;
+    final fim = math.min(inicio + 0.55, 1.0).toDouble();
+
+    return CurvedAnimation(
+      parent: _animacaoController,
+      curve: Interval(
+        inicio,
+        fim,
+        curve: Curves.easeOutCubic,
+      ),
+    ).value;
+  }
+
+  // Progresso das barras do gráfico de evolução.
+  double _progressoAnimacaoEvolucao(int indice, int total) {
+    final inicio = total <= 1 ? 0.0 : (indice / total) * 0.45;
+    final fim = math.min(inicio + 0.55, 1.0).toDouble();
+
+    return CurvedAnimation(
+      parent: _evolucaoController,
+      curve: Interval(
+        inicio,
+        fim,
+        curve: Curves.easeOutCubic,
+      ),
+    ).value;
+  }
+
+  Widget _animarEntrada({
+    required Widget child,
+    required double inicio,
+    required double fim,
+  }) {
+    return AnimatedBuilder(
+      animation: _animacaoController,
+      child: child,
+      builder: (context, child) {
+        final progresso = CurvedAnimation(
+          parent: _animacaoController,
+          curve: Interval(
+            inicio,
+            fim,
+            curve: Curves.easeOutCubic,
+          ),
+        ).value;
+
+        return Opacity(
+          opacity: progresso,
+          child: Transform.translate(
+            offset: Offset(0, 18 * (1 - progresso)),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
 
   DateTime get dataInicial {
     final agora = DateTime.now();
@@ -66,7 +179,9 @@ class _RelatoriosPageState extends State<RelatoriosPage> {
 
             if (!desperdiciosSnapshot.hasData) {
               return const Center(
-                child: CircularProgressIndicator(color: azulPrincipal),
+                child: CircularProgressIndicator(
+                  color: azulPrincipal,
+                ),
               );
             }
 
@@ -142,56 +257,110 @@ class _RelatoriosPageState extends State<RelatoriosPage> {
                       padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
                       sliver: SliverList(
                         delegate: SliverChildListDelegate([
-                          _cabecalho(),
+                          _animarEntrada(
+                            inicio: 0.00,
+                            fim: 0.35,
+                            child: _cabecalho(),
+                          ),
+
                           const SizedBox(height: 26),
-                          _tituloSecao('Período'),
-                          const SizedBox(height: 12),
-                          _filtrosPeriodo(),
+
+                          _animarEntrada(
+                            inicio: 0.08,
+                            fim: 0.42,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _tituloSecao('Período'),
+                                const SizedBox(height: 12),
+                                _filtrosPeriodo(),
+                              ],
+                            ),
+                          ),
+
                           const SizedBox(height: 26),
-                          _tituloSecao('Evolução do desperdício'),
-                          const SizedBox(height: 5),
-                          const Text(
-                            'Acompanhe a quantidade descartada ao longo do tempo.',
-                            style: TextStyle(
-                              color: textoSecundario,
-                              fontSize: 13,
+
+                          _animarEntrada(
+                            inicio: 0.15,
+                            fim: 0.55,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _tituloSecao('Evolução do desperdício'),
+                                const SizedBox(height: 5),
+                                const Text(
+                                  'Acompanhe a quantidade descartada ao longo do tempo.',
+                                  style: TextStyle(
+                                    color: textoSecundario,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                _seletorUnidade(),
+                                const SizedBox(height: 14),
+                                _graficoEvolucao(dados),
+                              ],
                             ),
                           ),
-                          const SizedBox(height: 16),
-                          _seletorUnidade(),
-                          const SizedBox(height: 14),
-                          _graficoEvolucao(dados),
+
                           const SizedBox(height: 28),
-                          _tituloSecao('Motivos do desperdício'),
-                          const SizedBox(height: 5),
-                          const Text(
-                            'Quantidade de registros por motivo.',
-                            style: TextStyle(
-                              color: textoSecundario,
-                              fontSize: 13,
+
+                          _animarEntrada(
+                            inicio: 0.25,
+                            fim: 0.65,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _tituloSecao('Motivos do desperdício'),
+                                const SizedBox(height: 5),
+                                const Text(
+                                  'Quantidade de registros por motivo.',
+                                  style: TextStyle(
+                                    color: textoSecundario,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                const SizedBox(height: 14),
+                                _graficoMotivos(dados),
+                              ],
                             ),
                           ),
-                          const SizedBox(height: 14),
-                          _graficoMotivos(dados),
+
                           const SizedBox(height: 28),
-                          _tituloSecao('Produtos mais desperdiçados'),
-                          const SizedBox(height: 5),
-                          const Text(
-                            'Ranking separado por unidade de medida.',
-                            style: TextStyle(
-                              color: textoSecundario,
-                              fontSize: 13,
+
+                          _animarEntrada(
+                            inicio: 0.35,
+                            fim: 0.75,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _tituloSecao('Produtos mais desperdiçados'),
+                                const SizedBox(height: 5),
+                                const Text(
+                                  'Ranking separado por unidade de medida.',
+                                  style: TextStyle(
+                                    color: textoSecundario,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                _rankingProdutos(dados),
+                              ],
                             ),
                           ),
-                          const SizedBox(height: 16),
-                          _rankingProdutos(dados),
+
                           const SizedBox(height: 24),
-                          Center(
-                            child: Text(
-                              nomePeriodo,
-                              style: const TextStyle(
-                                color: textoSecundario,
-                                fontSize: 12,
+
+                          _animarEntrada(
+                            inicio: 0.45,
+                            fim: 0.85,
+                            child: Center(
+                              child: Text(
+                                nomePeriodo,
+                                style: const TextStyle(
+                                  color: textoSecundario,
+                                  fontSize: 12,
+                                ),
                               ),
                             ),
                           ),
@@ -269,7 +438,10 @@ class _RelatoriosPageState extends State<RelatoriosPage> {
     return Expanded(
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => setState(() => periodo = valor),
+        onTap: () {
+          setState(() => periodo = valor);
+          _reiniciarAnimacaoEvolucao();
+        },
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
@@ -310,7 +482,10 @@ class _RelatoriosPageState extends State<RelatoriosPage> {
 
     return InkWell(
       borderRadius: BorderRadius.circular(20),
-      onTap: () => setState(() => unidadeSelecionada = unidade),
+      onTap: () {
+        setState(() => unidadeSelecionada = unidade);
+        _reiniciarAnimacaoEvolucao();
+      },
       child: Container(
         padding: const EdgeInsets.symmetric(
           horizontal: 18,
@@ -337,7 +512,6 @@ class _RelatoriosPageState extends State<RelatoriosPage> {
     );
   }
 
-  
   Widget _graficoEvolucao(List<_RegistroDesperdicio> dados) {
     final filtrados = dados
         .where((item) => item.unidade == unidadeSelecionada)
@@ -353,12 +527,9 @@ class _RelatoriosPageState extends State<RelatoriosPage> {
     };
 
     final inicio = dataInicial;
-
     final intervalos = <_Intervalo>[];
 
     for (int i = 0; i < quantidadeBarras; i++) {
-      // Divide o período proporcionalmente entre as barras.
-      // Assim, nenhum dia fica de fora.
       final diaInicial = (i * diasPeriodo) ~/ quantidadeBarras;
       final diaFinal = ((i + 1) * diasPeriodo) ~/ quantidadeBarras;
 
@@ -420,14 +591,15 @@ class _RelatoriosPageState extends State<RelatoriosPage> {
               ),
             ],
           ),
-
           const SizedBox(height: 25),
-
           SizedBox(
             height: 175,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
-              children: intervalos.map((item) {
+              children: intervalos.asMap().entries.map((entrada) {
+                final indice = entrada.key;
+                final item = entrada.value;
+
                 final altura = maiorValor == 0
                     ? 4.0
                     : math.max(
@@ -437,14 +609,10 @@ class _RelatoriosPageState extends State<RelatoriosPage> {
 
                 return Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 2,
-                    ),
-
+                    padding: const EdgeInsets.symmetric(horizontal: 2),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        // VALOR ACIMA DA BARRA
                         SizedBox(
                           width: double.infinity,
                           child: FittedBox(
@@ -460,21 +628,26 @@ class _RelatoriosPageState extends State<RelatoriosPage> {
                             ),
                           ),
                         ),
-
                         const SizedBox(height: 5),
+                        AnimatedBuilder(
+                          animation: _evolucaoController,
+                          builder: (context, child) {
+                            final progresso =
+                                _progressoAnimacaoEvolucao(
+                              indice,
+                              intervalos.length,
+                            );
 
-                        // BARRA
-                        Container(
-                          height: altura,
-                          decoration: BoxDecoration(
-                            color: azulPrincipal,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
+                            return Container(
+                              height: altura * progresso,
+                              decoration: BoxDecoration(
+                                color: azulPrincipal,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                            );
+                          },
                         ),
-
                         const SizedBox(height: 8),
-
-                        // DATA ABAIXO DA BARRA
                         SizedBox(
                           width: double.infinity,
                           child: FittedBox(
@@ -497,7 +670,6 @@ class _RelatoriosPageState extends State<RelatoriosPage> {
               }).toList(),
             ),
           ),
-
           if (filtrados.isEmpty)
             const Padding(
               padding: EdgeInsets.only(top: 12),
@@ -514,106 +686,115 @@ class _RelatoriosPageState extends State<RelatoriosPage> {
     );
   }
 
+  Widget _graficoMotivos(List<_RegistroDesperdicio> dados) {
+    final contagem = <String, int>{};
 
-  
-Widget _graficoMotivos(List<_RegistroDesperdicio> dados) {
-  final contagem = <String, int>{};
+    for (final item in dados) {
+      contagem[item.motivo] = (contagem[item.motivo] ?? 0) + 1;
+    }
 
-  for (final item in dados) {
-    contagem[item.motivo] = (contagem[item.motivo] ?? 0) + 1;
-  }
+    final ordenados = contagem.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
 
-  final ordenados = contagem.entries.toList()
-    ..sort((a, b) => b.value.compareTo(a.value));
+    if (ordenados.isEmpty) {
+      return _cartao(
+        child: _mensagemVazia(
+          'Nenhum registro encontrado no período.',
+        ),
+      );
+    }
 
-  if (ordenados.isEmpty) {
-    return _cartao(
-      child: _mensagemVazia(
-        'Nenhum registro encontrado no período.',
-      ),
-    );
-  }
+    final maior = ordenados.first.value;
+    final menor = ordenados.last.value;
 
-  final maior = ordenados.first.value;
-  final menor = ordenados.last.value;
+    Color corPorQuantidade(int quantidade) {
+      if (maior == menor) {
+        return azulPrincipal;
+      }
 
-  Color corPorQuantidade(int quantidade) {
-    if (maior == menor) {
+      final proporcao = (quantidade - menor) / (maior - menor);
+
+      if (proporcao >= 0.75) {
+        return const Color(0xFFDC2626);
+      }
+
+      if (proporcao >= 0.50) {
+        return const Color(0xFFF97316);
+      }
+
+      if (proporcao >= 0.25) {
+        return const Color(0xFFEAB308);
+      }
+
       return azulPrincipal;
     }
 
-    final proporcao =
-        (quantidade - menor) / (maior - menor);
+    return _cartao(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ...ordenados.asMap().entries.map((entrada) {
+            final indice = entrada.key;
+            final item = entrada.value;
 
-    if (proporcao >= 0.75) {
-      return const Color(0xFFDC2626); // Vermelho
-    }
+            final percentual = item.value / maior;
+            final cor = corPorQuantidade(item.value);
 
-    if (proporcao >= 0.50) {
-      return const Color(0xFFF97316); // Laranja
-    }
-
-    if (proporcao >= 0.25) {
-      return const Color(0xFFEAB308); // Amarelo
-    }
-
-    return azulPrincipal; // Azul
-  }
-
-  return _cartao(
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        ...ordenados.map((item) {
-          final percentual = item.value / maior;
-          final cor = corPorQuantidade(item.value);
-
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        item.key,
-                        style: const TextStyle(
-                          color: textoPrincipal,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          item.key,
+                          style: const TextStyle(
+                            color: textoPrincipal,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                       ),
-                    ),
-                    Text(
-                      '${item.value} ${item.value == 1 ? 'registro' : 'registros'}',
-                      style: TextStyle(
-                        color: cor,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
+                      Text(
+                        '${item.value} ${item.value == 1 ? 'registro' : 'registros'}',
+                        style: TextStyle(
+                          color: cor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 9),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: LinearProgressIndicator(
-                    value: percentual,
-                    minHeight: 10,
-                    backgroundColor: const Color(0xFFEFF4FA),
-                    color: cor,
+                    ],
                   ),
-                ),
-              ],
-            ),
-          );
-        }),
-      ],
-    ),
-  );
-}
+                  const SizedBox(height: 9),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: AnimatedBuilder(
+                      animation: _animacaoController,
+                      builder: (context, child) {
+                        final progresso = _progressoAnimacao(
+                          indice,
+                          ordenados.length,
+                        );
 
+                        return LinearProgressIndicator(
+                          value: percentual * progresso,
+                          minHeight: 10,
+                          backgroundColor: const Color(0xFFEFF4FA),
+                          color: cor,
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
 
   Widget _rankingProdutos(List<_RegistroDesperdicio> dados) {
     return Column(
@@ -765,7 +946,13 @@ Widget _graficoMotivos(List<_RegistroDesperdicio> dados) {
   String _normalizarUnidade(String unidade) {
     final valor = unidade.trim().toLowerCase();
 
-    if (['kg', 'quilo', 'quilos', 'quilograma', 'quilogramas'].contains(valor)) {
+    if ([
+      'kg',
+      'quilo',
+      'quilos',
+      'quilograma',
+      'quilogramas',
+    ].contains(valor)) {
       return 'kg';
     }
 
@@ -788,7 +975,7 @@ Widget _graficoMotivos(List<_RegistroDesperdicio> dados) {
       'unidades',
       'und',
       'ovo',
-      'ovos'
+      'ovos',
     ].contains(valor)) {
       return 'un.';
     }

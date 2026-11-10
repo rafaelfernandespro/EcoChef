@@ -5,7 +5,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../widgets/menu-perfil.dart';
 
 class ListaFuncionariosScreen extends StatefulWidget {
-  const ListaFuncionariosScreen({super.key});
+  final int animationKey;
+
+  const ListaFuncionariosScreen({
+    super.key,
+    this.animationKey = 0,
+  });
 
   @override
   State<ListaFuncionariosScreen> createState() =>
@@ -13,9 +18,19 @@ class ListaFuncionariosScreen extends StatefulWidget {
 }
 
 class _ListaFuncionariosScreenState
-    extends State<ListaFuncionariosScreen> {
+    extends State<ListaFuncionariosScreen>
+    with TickerProviderStateMixin {
   final TextEditingController buscaController =
       TextEditingController();
+
+  final FocusNode buscaFocusNode = FocusNode();
+
+  // Atualiza somente a listagem, sem reconstruir a tela inteira.
+  final ValueNotifier<int> atualizacaoResultados =
+      ValueNotifier<int>(0);
+
+  late final AnimationController _animacaoController;
+  late final AnimationController _resultadosController;
 
   String filtroStatus = 'Todos';
   String filtroTipo = 'Todos';
@@ -24,9 +39,123 @@ class _ListaFuncionariosScreenState
       FirebaseFirestore.instance.collection('usuarios');
 
   @override
+  void initState() {
+    super.initState();
+
+    _animacaoController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2400),
+    );
+
+    _resultadosController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    );
+
+    _animacaoController.forward();
+    _resultadosController.forward();
+  }
+
+  @override
+  void didUpdateWidget(
+    covariant ListaFuncionariosScreen oldWidget,
+  ) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.animationKey != widget.animationKey) {
+      _animacaoController.forward(from: 0);
+      _resultadosController.forward(from: 0);
+    }
+  }
+
+  @override
   void dispose() {
     buscaController.dispose();
+    buscaFocusNode.dispose();
+    atualizacaoResultados.dispose();
+    _animacaoController.dispose();
+    _resultadosController.dispose();
+
     super.dispose();
+  }
+
+  // Animação geral de entrada da tela.
+  Widget animarEntrada(Widget child) {
+    return AnimatedBuilder(
+      animation: _animacaoController,
+      child: child,
+      builder: (context, child) {
+        final progresso = Curves.easeOutCubic.transform(
+          (_animacaoController.value / 0.55).clamp(0.0, 1.0),
+        );
+
+        return Opacity(
+          opacity: progresso,
+          child: Transform.translate(
+            offset: Offset(0, 18 * (1 - progresso)),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
+
+  // Reinicia somente a animação dos resultados.
+  void reiniciarAnimacaoResultados() {
+    _resultadosController.forward(from: 0);
+  }
+
+  // Atualiza a listagem sem reconstruir o campo de pesquisa.
+  void atualizarResultados() {
+    atualizacaoResultados.value++;
+    reiniciarAnimacaoResultados();
+  }
+
+  Future<void> abrirCadastroUsuario() async {
+    await Navigator.pushNamed(
+      context,
+      '/cadastro-usuarios',
+    );
+
+    if (!mounted) return;
+
+    // Reinicia a animação geral da tela.
+    _animacaoController.forward(from: 0);
+
+    // Reinicia a animação dos cards.
+    _resultadosController.forward(from: 0);
+  }
+
+  // Anima os cards em sequência.
+  Widget animarCard(int indice, Widget child) {
+    final inicio = (0.08 + indice * 0.07).clamp(0.0, 0.65);
+    final fim = (inicio + 0.35).clamp(0.0, 1.0);
+
+    final animacao = CurvedAnimation(
+      parent: _resultadosController,
+      curve: Interval(
+        inicio.toDouble(),
+        fim.toDouble(),
+        curve: Curves.easeOutCubic,
+      ),
+    );
+
+    return AnimatedBuilder(
+      animation: animacao,
+      child: child,
+      builder: (context, child) {
+        return Opacity(
+          opacity: animacao.value,
+          child: Transform.translate(
+            offset: Offset(
+              0,
+              22 * (1 - animacao.value),
+            ),
+            child: child,
+          ),
+        );
+      },
+    );
   }
 
   // Normaliza os tipos de usuários.
@@ -55,7 +184,7 @@ class _ListaFuncionariosScreenState
     }
   }
 
-  // Filtra os usuários recebidos do Firestore.
+  // Filtra e ordena os usuários.
   List<QueryDocumentSnapshot<Map<String, dynamic>>>
       filtrarUsuarios(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> documentos,
@@ -133,7 +262,10 @@ class _ListaFuncionariosScreenState
   }
 
   // Exibe mensagens para o usuário.
-  void mostrarMensagem(String mensagem, {bool erro = false}) {
+  void mostrarMensagem(
+    String mensagem, {
+    bool erro = false,
+  }) {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context)
@@ -148,8 +280,7 @@ class _ListaFuncionariosScreenState
       );
   }
 
-  // Verifica o perfil do usuário conectado.
-  // Somente administradores ativos visualizam o botão.
+  // Cadastro disponível somente para administradores ativos.
   Widget botaoCadastrarUsuario() {
     final usuarioLogado = FirebaseAuth.instance.currentUser;
 
@@ -188,12 +319,7 @@ class _ListaFuncionariosScreenState
           width: double.infinity,
           height: 48,
           child: ElevatedButton.icon(
-            onPressed: () {
-              Navigator.pushNamed(
-                context,
-                '/cadastro-usuarios',
-              );
-            },
+            onPressed: abrirCadastroUsuario,
             icon: const Icon(Icons.person_add_alt_1),
             label: const Text('Cadastrar usuário'),
             style: ElevatedButton.styleFrom(
@@ -210,14 +336,13 @@ class _ListaFuncionariosScreenState
     );
   }
 
-  // Altera o status diretamente no Firestore.
+  // Altera o status no Firestore.
   Future<void> alterarStatus(
     QueryDocumentSnapshot<Map<String, dynamic>> documento,
   ) async {
     final dados = documento.data();
     final ativoAtual = dados['ativo'] == true;
 
-    // Impede que o administrador desative a própria conta.
     final usuarioLogado = FirebaseAuth.instance.currentUser;
 
     if (usuarioLogado?.uid == documento.id) {
@@ -253,11 +378,10 @@ class _ListaFuncionariosScreenState
     }
   }
 
-  // Edita os dados do usuário no Firestore.
+  // Edita os dados do usuário.
   Future<void> editarFuncionario(
     QueryDocumentSnapshot<Map<String, dynamic>> documento,
   ) async {
-
     final usuarioLogado = FirebaseAuth.instance.currentUser;
 
     if (usuarioLogado?.uid == documento.id) {
@@ -287,6 +411,7 @@ class _ListaFuncionariosScreenState
 
     final nomeOriginal = nomeController.text.trim();
     final tipoOriginal = tipoSelecionado;
+
     final formKey = GlobalKey<FormState>();
 
     try {
@@ -295,9 +420,10 @@ class _ListaFuncionariosScreenState
         builder: (dialogContext) {
           return StatefulBuilder(
             builder: (contexto, atualizarDialogo) {
+              final houveAlteracao =
+                  nomeController.text.trim() != nomeOriginal ||
+                  tipoSelecionado != tipoOriginal;
 
-              final houveAlteracao = nomeController.text.trim() != nomeOriginal || tipoSelecionado != tipoOriginal;
-              
               return AlertDialog(
                 title: const Text('Editar usuário'),
                 content: SizedBox(
@@ -308,7 +434,6 @@ class _ListaFuncionariosScreenState
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          // NOME
                           TextFormField(
                             controller: nomeController,
                             onChanged: (valor) {
@@ -332,7 +457,6 @@ class _ListaFuncionariosScreenState
 
                           const SizedBox(height: 16),
 
-                          // EMAIL
                           TextFormField(
                             controller: emailController,
                             readOnly: true,
@@ -350,7 +474,6 @@ class _ListaFuncionariosScreenState
 
                           const SizedBox(height: 16),
 
-                          // CPF
                           TextFormField(
                             controller: cpfController,
                             readOnly: true,
@@ -366,7 +489,6 @@ class _ListaFuncionariosScreenState
 
                           const SizedBox(height: 16),
 
-                          // TIPO DE USUÁRIO
                           DropdownButtonFormField<String>(
                             initialValue: tipoSelecionado.isEmpty
                                 ? null
@@ -425,8 +547,6 @@ class _ListaFuncionariosScreenState
                     child: const Text('Salvar alterações'),
                   ),
                 ],
-
-                
               );
             },
           );
@@ -437,19 +557,6 @@ class _ListaFuncionariosScreenState
         return;
       }
 
-      // Impede remover o próprio perfil de administrador.
-      final usuarioLogado = FirebaseAuth.instance.currentUser;
-
-      if (usuarioLogado?.uid == documento.id &&
-          tipoSelecionado != 'admin') {
-        mostrarMensagem(
-          'Você não pode remover seu próprio perfil de administrador.',
-          erro: true,
-        );
-        return;
-      }
-
-      // Atualiza os dados no Firestore.
       await usuariosRef.doc(documento.id).update({
         'nomeCompleto': nomeController.text.trim(),
         'tipoUsuario': tipoSelecionado,
@@ -494,6 +601,270 @@ class _ListaFuncionariosScreenState
     );
   }
 
+  // Constrói a listagem separadamente da tela principal.
+  Widget construirListaUsuarios(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> documentos,
+  ) {
+    return ValueListenableBuilder<int>(
+      valueListenable: atualizacaoResultados,
+      builder: (context, _, child) {
+        final lista = filtrarUsuarios(documentos);
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Lista de usuários',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF1E293B),
+                    ),
+                  ),
+                ),
+                Text(
+                  '${lista.length} encontrados',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF64748B),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 14),
+
+            if (lista.isEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(28),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: const Column(
+                  children: [
+                    Icon(
+                      Icons.person_search_outlined,
+                      size: 42,
+                      color: Color(0xFF94A3B8),
+                    ),
+                    SizedBox(height: 12),
+                    Text(
+                      'Nenhum usuário encontrado.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else
+              ...lista.asMap().entries.map((entrada) {
+                final indice = entrada.key;
+                final documento = entrada.value;
+                final dados = documento.data();
+
+                final ehUsuarioLogado =
+                    FirebaseAuth.instance.currentUser?.uid ==
+                        documento.id;
+
+                final nome =
+                    (dados['nomeCompleto'] ?? '').toString();
+
+                final email =
+                    (dados['email'] ?? '').toString();
+
+                final cpf =
+                    (dados['cpf'] ?? '').toString();
+
+                final tipo = nomeTipo(
+                  dados['tipoUsuario']?.toString(),
+                );
+
+                final ativo = dados['ativo'] == true;
+
+                final iniciais = nome
+                    .split(' ')
+                    .where((parte) => parte.isNotEmpty)
+                    .take(2)
+                    .map((parte) => parte[0])
+                    .join()
+                    .toUpperCase();
+
+                return animarCard(
+                  indice,
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 14),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.03),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 24,
+                              backgroundColor:
+                                  const Color(0xFFDBEAFE),
+                              child: Text(
+                                iniciais.isEmpty ? '?' : iniciais,
+                                style: const TextStyle(
+                                  color: Color(0xFF1D4ED8),
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+
+                            const SizedBox(width: 12),
+
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    nome,
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF1E293B),
+                                    ),
+                                  ),
+
+                                  const SizedBox(height: 4),
+
+                                  Text(
+                                    email,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Color(0xFF64748B),
+                                    ),
+                                  ),
+
+                                  const SizedBox(height: 5),
+
+                                  Text(
+                                    'Tipo: $tipo',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Color(0xFF64748B),
+                                    ),
+                                  ),
+
+                                  const SizedBox(height: 3),
+
+                                  Text(
+                                    'CPF: $cpf',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Color(0xFF64748B),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: ativo
+                                    ? const Color(0xFFDCFCE7)
+                                    : const Color(0xFFF1F5F9),
+                                borderRadius:
+                                    BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                ativo ? 'Ativo' : 'Inativo',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: ativo
+                                      ? const Color(0xFF166534)
+                                      : const Color(0xFF64748B),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        if (!ehUsuarioLogado) ...[
+                          const SizedBox(height: 12),
+
+                          const Divider(
+                            color: Color(0xFFE2E8F0),
+                          ),
+
+                          const SizedBox(height: 4),
+
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextButton.icon(
+                                  onPressed: () =>
+                                      editarFuncionario(documento),
+                                  icon: const Icon(
+                                    Icons.edit_outlined,
+                                    size: 18,
+                                  ),
+                                  label: const Text('Editar'),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor:
+                                        const Color(0xFF2563EB),
+                                  ),
+                                ),
+                              ),
+
+                              Expanded(
+                                child: TextButton.icon(
+                                  onPressed: () =>
+                                      alterarStatus(documento),
+                                  icon: Icon(
+                                    ativo
+                                        ? Icons.person_off_outlined
+                                        : Icons.person_outline,
+                                    size: 18,
+                                  ),
+                                  label: Text(
+                                    ativo ? 'Inativar' : 'Reativar',
+                                  ),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: ativo
+                                        ? const Color(0xFFB45309)
+                                        : const Color(0xFF15803D),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                );
+              }),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -503,7 +874,6 @@ class _ListaFuncionariosScreenState
             QuerySnapshot<Map<String, dynamic>>>(
           stream: usuariosRef.snapshots(),
           builder: (context, snapshot) {
-            // CARREGAMENTO
             if (snapshot.connectionState ==
                 ConnectionState.waiting) {
               return const Center(
@@ -513,7 +883,6 @@ class _ListaFuncionariosScreenState
               );
             }
 
-            // ERRO DE CONSULTA
             if (snapshot.hasError) {
               return Center(
                 child: Padding(
@@ -548,471 +917,238 @@ class _ListaFuncionariosScreenState
 
             final documentos = snapshot.data?.docs ?? [];
 
-            // TOTAL DE USUÁRIOS ATIVOS
             final totalAtivos = documentos.where((doc) {
               return doc.data()['ativo'] == true;
             }).length;
 
-            // APLICA OS FILTROS
-            final lista = filtrarUsuarios(documentos);
-
-            return SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // CABEÇALHO - SOMENTE O TÍTULO
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'Usuários',
-                          style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF1E293B),
-                          ),
-                        ),
-                      ),
-                      const MenuPerfil(),
-                    ],
-                  ),
-
-                  const SizedBox(height: 4),
-
-                  const Padding(
-                    padding: EdgeInsets.only(left: 4),
-                    child: Text(
-                      'Gerencie os usuários do EcoChef.',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Color(0xFF64748B),
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // RESUMO DE USUÁRIOS ATIVOS
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(18),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.04),
-                          blurRadius: 20,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    child: Row(
+            return animarEntrada(
+              SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(
+                  20,
+                  20,
+                  20,
+                  24,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // CABEÇALHO
+                    Row(
                       children: [
-                        Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFDBEAFE),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(
-                            Icons.groups_outlined,
-                            color: Color(0xFF2563EB),
-                            size: 28,
-                          ),
-                        ),
-
-                        const SizedBox(width: 14),
-
                         const Expanded(
                           child: Text(
-                            'Usuários ativos',
+                            'Usuários',
                             style: TextStyle(
-                              fontSize: 14,
-                              color: Color(0xFF64748B),
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1E293B),
                             ),
                           ),
                         ),
-
-                        Text(
-                          '$totalAtivos',
-                          style: const TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF1E3A8A),
-                          ),
-                        ),
+                        const MenuPerfil(),
                       ],
                     ),
-                  ),
 
-                  const SizedBox(height: 24),
+                    const SizedBox(height: 4),
 
-                  // BOTÃO CADASTRAR - SOMENTE ADMINISTRADOR
-                  botaoCadastrarUsuario(),
-
-                  const SizedBox(height: 24),
-
-                  // PESQUISA
-                  const Text(
-                    'Pesquisar usuários',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF1E293B),
-                    ),
-                  ),
-
-                  const SizedBox(height: 8),
-
-                  TextField(
-                    controller: buscaController,
-                    onChanged: (_) => setState(() {}),
-                    decoration: InputDecoration(
-                      hintText: 'Nome, e-mail ou CPF',
-                      prefixIcon: const Icon(
-                        Icons.search,
-                        color: Color(0xFF64748B),
-                      ),
-                      filled: true,
-                      fillColor: Colors.white,
-                      contentPadding:
-                          const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 16,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: const BorderSide(
-                          color: Color(0xFFCBD5E1),
-                        ),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: const BorderSide(
-                          color: Color(0xFFCBD5E1),
-                        ),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: const BorderSide(
-                          color: Color(0xFF2563EB),
-                          width: 1.5,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // FILTRO DE STATUS
-                  DropdownButtonFormField<String>(
-                    initialValue: filtroStatus,
-                    decoration: estiloFiltro(
-                      titulo: 'Filtrar por status',
-                      icone: Icons.toggle_on_outlined,
-                    ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'Todos',
-                        child: Text('Todos os status'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'Ativos',
-                        child: Text('Ativos'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'Inativos',
-                        child: Text('Inativos'),
-                      ),
-                    ],
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() {
-                          filtroStatus = value;
-                        });
-                      }
-                    },
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // FILTRO DE TIPO
-                  DropdownButtonFormField<String>(
-                    initialValue: filtroTipo,
-                    decoration: estiloFiltro(
-                      titulo: 'Filtrar por tipo',
-                      icone: Icons.manage_accounts_outlined,
-                    ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'Todos',
-                        child: Text('Todos os tipos'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'Admin',
-                        child: Text('Admin'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'Funcionário',
-                        child: Text('Funcionário'),
-                      ),
-                    ],
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() {
-                          filtroTipo = value;
-                        });
-                      }
-                    },
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // TÍTULO DA LISTA
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'Lista de usuários',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF1E293B),
-                          ),
-                        ),
-                      ),
-                      Text(
-                        '${lista.length} encontrados',
-                        style: const TextStyle(
-                          fontSize: 12,
+                    const Padding(
+                      padding: EdgeInsets.only(left: 4),
+                      child: Text(
+                        'Gerencie os usuários do EcoChef.',
+                        style: TextStyle(
+                          fontSize: 14,
                           color: Color(0xFF64748B),
                         ),
                       ),
-                    ],
-                  ),
+                    ),
 
-                  const SizedBox(height: 14),
+                    const SizedBox(height: 24),
 
-                  // LISTA DE USUÁRIOS
-                  if (lista.isEmpty)
+                    // RESUMO DE USUÁRIOS ATIVOS
                     Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.all(28),
+                      padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(18),
-                      ),
-                      child: const Column(
-                        children: [
-                          Icon(
-                            Icons.person_search_outlined,
-                            size: 42,
-                            color: Color(0xFF94A3B8),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.04),
+                            blurRadius: 20,
+                            offset: const Offset(0, 8),
                           ),
-                          SizedBox(height: 12),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFDBEAFE),
+                              borderRadius:
+                                  BorderRadius.circular(12),
+                            ),
+                            child: const Icon(
+                              Icons.groups_outlined,
+                              color: Color(0xFF2563EB),
+                              size: 28,
+                            ),
+                          ),
+
+                          const SizedBox(width: 14),
+
+                          const Expanded(
+                            child: Text(
+                              'Usuários ativos',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                          ),
+
                           Text(
-                            'Nenhum usuário encontrado.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: Color(0xFF64748B),
+                            '$totalAtivos',
+                            style: const TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1E3A8A),
                             ),
                           ),
                         ],
                       ),
-                    )
-                  else
-                    ...lista.map((documento) {
-                      final dados = documento.data();
-                      final ehUsuarioLogado =
-                        FirebaseAuth.instance.currentUser?.uid == documento.id;
+                    ),
 
-                      final nome =
-                          (dados['nomeCompleto'] ?? '').toString();
+                    const SizedBox(height: 24),
 
-                      final email =
-                          (dados['email'] ?? '').toString();
+                    // CADASTRAR USUÁRIO
+                    botaoCadastrarUsuario(),
 
-                      final cpf =
-                          (dados['cpf'] ?? '').toString();
+                    const SizedBox(height: 24),
 
-                      final tipo = nomeTipo(
-                        dados['tipoUsuario']?.toString(),
-                      );
+                    // PESQUISA
+                    const Text(
+                      'Pesquisar usuários',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF1E293B),
+                      ),
+                    ),
 
-                      final ativo = dados['ativo'] == true;
+                    const SizedBox(height: 8),
 
-                      final iniciais = nome
-                          .split(' ')
-                          .where((parte) => parte.isNotEmpty)
-                          .take(2)
-                          .map((parte) => parte[0])
-                          .join()
-                          .toUpperCase();
-
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 14),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(18),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.03),
-                              blurRadius: 12,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
+                    TextField(
+                      key: const ValueKey('pesquisa-usuarios'),
+                      controller: buscaController,
+                      focusNode: buscaFocusNode,
+                      onChanged: (_) {
+                        atualizarResultados();
+                      },
+                      decoration: InputDecoration(
+                        hintText: 'Nome, e-mail ou CPF',
+                        prefixIcon: const Icon(
+                          Icons.search,
+                          color: Color(0xFF64748B),
                         ),
-                        child: Column(
-                          children: [
-                            Row(
-                              children: [
-                                CircleAvatar(
-                                  radius: 24,
-                                  backgroundColor:
-                                      const Color(0xFFDBEAFE),
-                                  child: Text(
-                                    iniciais.isEmpty
-                                        ? '?'
-                                        : iniciais,
-                                    style: const TextStyle(
-                                      color: Color(0xFF1D4ED8),
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-
-                                const SizedBox(width: 12),
-
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        nome,
-                                        style: const TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w600,
-                                          color: Color(0xFF1E293B),
-                                        ),
-                                      ),
-
-                                      const SizedBox(height: 4),
-
-                                      Text(
-                                        email,
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          color: Color(0xFF64748B),
-                                        ),
-                                      ),
-
-                                      const SizedBox(height: 5),
-
-                                      Text(
-                                        'Tipo: $tipo',
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          color: Color(0xFF64748B),
-                                        ),
-                                      ),
-
-                                      const SizedBox(height: 3),
-
-                                      Text(
-                                        'CPF: $cpf',
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          color: Color(0xFF64748B),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 5,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: ativo
-                                        ? const Color(0xFFDCFCE7)
-                                        : const Color(0xFFF1F5F9),
-                                    borderRadius:
-                                        BorderRadius.circular(20),
-                                  ),
-                                  child: Text(
-                                    ativo ? 'Ativo' : 'Inativo',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: ativo
-                                          ? const Color(0xFF166534)
-                                          : const Color(0xFF64748B),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-
-                            if (!ehUsuarioLogado) ...[
-                              const SizedBox(height: 12),
-
-                              const Divider(
-                                color: Color(0xFFE2E8F0),
-                              ),
-
-                              const SizedBox(height: 4),
-
-                              // AÇÕES
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: TextButton.icon(
-                                      onPressed: () => editarFuncionario(documento),
-                                      icon: const Icon(
-                                        Icons.edit_outlined,
-                                        size: 18,
-                                      ),
-                                      label: const Text('Editar'),
-                                      style: TextButton.styleFrom(
-                                        foregroundColor: const Color(0xFF2563EB),
-                                      ),
-                                    ),
-                                  ),
-
-                                  Expanded(
-                                    child: TextButton.icon(
-                                      onPressed: () => alterarStatus(documento),
-                                      icon: Icon(
-                                        ativo
-                                            ? Icons.person_off_outlined
-                                            : Icons.person_outline,
-                                        size: 18,
-                                      ),
-                                      label: Text(
-                                        ativo ? 'Inativar' : 'Reativar',
-                                      ),
-                                      style: TextButton.styleFrom(
-                                        foregroundColor: ativo
-                                            ? const Color(0xFFB45309)
-                                            : const Color(0xFF15803D),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ],
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding:
+                            const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 16,
                         ),
-                      );
-                    }),
-                ],
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFCBD5E1),
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFCBD5E1),
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(
+                            color: Color(0xFF2563EB),
+                            width: 1.5,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // FILTRO DE STATUS
+                    DropdownButtonFormField<String>(
+                      initialValue: filtroStatus,
+                      decoration: estiloFiltro(
+                        titulo: 'Filtrar por status',
+                        icone: Icons.toggle_on_outlined,
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'Todos',
+                          child: Text('Todos os status'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Ativos',
+                          child: Text('Ativos'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Inativos',
+                          child: Text('Inativos'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value != null && filtroStatus != value) {
+                          filtroStatus = value;
+                          atualizarResultados();
+                        }
+                      },
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // FILTRO DE TIPO
+                    DropdownButtonFormField<String>(
+                      initialValue: filtroTipo,
+                      decoration: estiloFiltro(
+                        titulo: 'Filtrar por tipo',
+                        icone: Icons.manage_accounts_outlined,
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'Todos',
+                          child: Text('Todos os tipos'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Admin',
+                          child: Text('Admin'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Funcionário',
+                          child: Text('Funcionário'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value != null && filtroTipo != value) {
+                          filtroTipo = value;
+                          atualizarResultados();
+                        }
+                      },
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // LISTAGEM INDEPENDENTE DA PESQUISA
+                    construirListaUsuarios(documentos),
+                  ],
+                ),
               ),
             );
           },

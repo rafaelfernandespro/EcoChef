@@ -16,9 +16,13 @@ class HistoricoDesperdicioPage extends StatefulWidget {
       _HistoricoDesperdicioPageState();
 }
 
-class _HistoricoDesperdicioPageState
-    extends State<HistoricoDesperdicioPage> {
+class _HistoricoDesperdicioPageState extends State<HistoricoDesperdicioPage>
+    with TickerProviderStateMixin {
   final pesquisaController = TextEditingController();
+  final atualizacaoResultados = ValueNotifier<int>(0);
+
+  late final AnimationController _entradaController;
+  late final AnimationController _resultadosController;
 
   String pesquisa = '';
   DateTime? dataInicial;
@@ -26,9 +30,35 @@ class _HistoricoDesperdicioPageState
   String? motivoSelecionado;
 
   @override
+  void initState() {
+    super.initState();
+
+    _entradaController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 650),
+    );
+
+    _resultadosController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    );
+
+    _entradaController.forward();
+    _resultadosController.forward();
+  }
+
+  @override
   void dispose() {
     pesquisaController.dispose();
+    atualizacaoResultados.dispose();
+    _entradaController.dispose();
+    _resultadosController.dispose();
     super.dispose();
+  }
+
+  void atualizarResultados() {
+    atualizacaoResultados.value++;
+    _resultadosController.forward(from: 0);
   }
 
   String formatarData(dynamic valor) {
@@ -43,7 +73,6 @@ class _HistoricoDesperdicioPageState
 
   Future<void> selecionarData(bool inicial) async {
     final agora = DateTime.now();
-
     final dataAtual = inicial ? dataInicial : dataFinal;
 
     final selecionada = await showDatePicker(
@@ -66,31 +95,82 @@ class _HistoricoDesperdicioPageState
       },
     );
 
-    if (selecionada != null) {
-      setState(() {
-        if (inicial) {
-          dataInicial = selecionada;
+    if (!mounted || selecionada == null) return;
 
-          if (dataFinal != null &&
-              dataFinal!.isBefore(selecionada)) {
-            dataFinal = selecionada;
-          }
-        } else {
-          dataFinal = selecionada;
+    if (inicial) {
+      dataInicial = selecionada;
 
-          if (dataInicial != null &&
-              dataInicial!.isAfter(selecionada)) {
-            dataInicial = selecionada;
-          }
-        }
-      });
+      if (dataFinal != null && dataFinal!.isBefore(selecionada)) {
+        dataFinal = selecionada;
+      }
+    } else {
+      dataFinal = selecionada;
+
+      if (dataInicial != null && dataInicial!.isAfter(selecionada)) {
+        dataInicial = selecionada;
+      }
     }
+
+    atualizarResultados();
   }
 
   String formatarQuantidade(dynamic valor) {
     final quantidade = (valor as num?)?.toDouble() ?? 0;
 
     return quantidade.toStringAsFixed(2).replaceAll('.', ',');
+  }
+
+  Widget animarEntrada(Widget child) {
+    return FadeTransition(
+      opacity: CurvedAnimation(
+        parent: _entradaController,
+        curve: Curves.easeOut,
+      ),
+      child: SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0, 0.035),
+          end: Offset.zero,
+        ).animate(
+          CurvedAnimation(
+            parent: _entradaController,
+            curve: Curves.easeOutCubic,
+          ),
+        ),
+        child: child,
+      ),
+    );
+  }
+
+  Widget animarCard({
+    required Widget child,
+    required int index,
+    required int total,
+  }) {
+    final inicio = (index * 0.08).clamp(0.0, 0.70);
+    final fim = (inicio + 0.35).clamp(0.0, 1.0);
+
+    final curva = CurvedAnimation(
+      parent: _resultadosController,
+      curve: Interval(
+        inicio,
+        fim,
+        curve: Curves.easeOutCubic,
+      ),
+    );
+
+    return AnimatedBuilder(
+      animation: curva,
+      child: child,
+      builder: (context, child) {
+        return Opacity(
+          opacity: curva.value,
+          child: Transform.translate(
+            offset: Offset(0, 18 * (1 - curva.value)),
+            child: child,
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -110,403 +190,433 @@ class _HistoricoDesperdicioPageState
           ),
         ),
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
-            child: TextField(
-              controller: pesquisaController,
-              onChanged: (valor) {
-                setState(() {
+      body: animarEntrada(
+        Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+              child: TextField(
+                controller: pesquisaController,
+                onChanged: (valor) {
                   pesquisa = valor.toLowerCase().trim();
-                });
-              },
-              decoration: InputDecoration(
-                hintText: 'Pesquisar produto',
-                prefixIcon: const Icon(
-                  Icons.search,
-                  color: textoSecundario,
-                ),
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: borda),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: borda),
+                  atualizarResultados();
+                },
+                decoration: InputDecoration(
+                  hintText: 'Pesquisar produto',
+                  prefixIcon: const Icon(
+                    Icons.search,
+                    color: textoSecundario,
+                  ),
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: borda),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: borda),
+                  ),
                 ),
               ),
             ),
-          ),
 
-          // FILTRO POR PERÍODO
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => selecionarData(true),
-                    icon: const Icon(
-                      Icons.calendar_month_outlined,
-                      color: azulPrincipal,
-                    ),
-                    label: Text(
-                      dataInicial == null
-                          ? 'Data inicial'
-                          : 'Início: ${formatarData(Timestamp.fromDate(dataInicial!))}',
-                      style: const TextStyle(
-                        color: azulPrincipal,
-                        fontSize: 12,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: borda),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => selecionarData(false),
-                    icon: const Icon(
-                      Icons.calendar_month_outlined,
-                      color: azulPrincipal,
-                    ),
-                    label: Text(
-                      dataFinal == null
-                          ? 'Data final'
-                          : 'Fim: ${formatarData(Timestamp.fromDate(dataFinal!))}',
-                      style: const TextStyle(
-                        color: azulPrincipal,
-                        fontSize: 12,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: borda),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                ),
-                if (dataInicial != null || dataFinal != null)
-                  IconButton(
-                    tooltip: 'Limpar período',
-                    onPressed: () {
-                      setState(() {
-                        dataInicial = null;
-                        dataFinal = null;
-                      });
-                    },
-                    icon: const Icon(
-                      Icons.close,
-                      color: textoSecundario,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-
-          Expanded(
-            child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance
-                  .collection('produtos')
-                  .snapshots(),
-              builder: (context, produtosSnapshot) {
-                if (produtosSnapshot.hasError) {
-                  return const Center(
-                    child: Text('Erro ao carregar produtos.'),
-                  );
-                }
-
-                if (!produtosSnapshot.hasData) {
-                  return const Center(
-                    child: CircularProgressIndicator(
-                      color: azulPrincipal,
-                    ),
-                  );
-                }
-
-                final nomesProdutos = <String, Map<String, dynamic>>{};
-
-                for (final doc in produtosSnapshot.data!.docs) {
-                  nomesProdutos[doc.id] = doc.data();
-                }
-
-                return StreamBuilder<
-                    QuerySnapshot<Map<String, dynamic>>>(
-                  stream: FirebaseFirestore.instance
-                      .collection('desperdicios')
-                      .orderBy(
-                        'dataDesperdicio',
-                        descending: true,
-                      )
-                      .snapshots(),
-                  builder: (context, snapshot) {
-                    if (snapshot.hasError) {
-                      return const Center(
-                        child: Text('Erro ao carregar histórico.'),
-                      );
-                    }
-
-                    if (!snapshot.hasData) {
-                      return const Center(
-                        child: CircularProgressIndicator(
-                          color: azulPrincipal,
-                        ),
-                      );
-                    }
-
-                    final documentos = snapshot.data!.docs;
-
-                    // OBTÉM OS MOTIVOS EXISTENTES NO HISTÓRICO
-                    final motivos = documentos
-                        .map((doc) =>
-                            doc.data()['motivo']?.toString().trim() ?? '')
-                        .where((motivo) => motivo.isNotEmpty)
-                        .toSet()
-                        .toList()
-                      ..sort(
-                        (a, b) => a.toLowerCase().compareTo(b.toLowerCase()),
-                      );
-
-                    final motivoAtual = motivos.contains(motivoSelecionado)
-                        ? motivoSelecionado
-                        : null;
-
-                    // APLICA OS FILTROS
-                    final filtrados = documentos.where((doc) {
-                      final dados = doc.data();
-
-                      final produtoId =
-                          dados['produtoId']?.toString() ?? '';
-
-                      final nomeProduto =
-                          nomesProdutos[produtoId]?['nome']?.toString() ??
-                              'Produto não encontrado';
-
-                      final motivo = dados['motivo']?.toString() ?? '';
-
-                      // Pesquisa somente pelo nome do produto
-                      final correspondePesquisa =
-                          nomeProduto.toLowerCase().contains(pesquisa);
-
-                      // Filtro independente por motivo
-                      final correspondeMotivo = motivoAtual == null ||
-                          motivo == motivoAtual;
-
-                      final valorData = dados['dataDesperdicio'];
-
-                      final dataRegistro =
-                          valorData is Timestamp ? valorData.toDate() : null;
-
-                      final inicio = dataInicial == null
-                          ? null
-                          : DateTime(
-                              dataInicial!.year,
-                              dataInicial!.month,
-                              dataInicial!.day,
-                            );
-
-                      final fimExclusivo = dataFinal == null
-                          ? null
-                          : DateTime(
-                              dataFinal!.year,
-                              dataFinal!.month,
-                              dataFinal!.day + 1,
-                            );
-
-                      final correspondeData =
-                          (inicio == null || (dataRegistro != null &&
-                              !dataRegistro.isBefore(inicio))) &&
-                          (fimExclusivo == null || (dataRegistro != null &&
-                              dataRegistro.isBefore(fimExclusivo)));
-
-                      return correspondePesquisa &&
-                          correspondeMotivo &&
-                          correspondeData;
-                    }).toList();
-
-                    return Column(
-                      children: [
-                        // SELETOR DE MOTIVOS
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                          child: DropdownButtonFormField<String>(
-                            value: motivoAtual ?? '',
-                            isExpanded: true,
-                            decoration: InputDecoration(
-                              labelText: 'Filtrar por motivo',
-                              prefixIcon: const Icon(
-                                Icons.filter_list,
-                                color: textoSecundario,
-                              ),
-                              filled: true,
-                              fillColor: Colors.white,
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 13,
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: const BorderSide(color: borda),
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: const BorderSide(color: borda),
-                              ),
+            // FILTRO POR PERÍODO
+            ValueListenableBuilder<int>(
+              valueListenable: atualizacaoResultados,
+              builder: (context, _, __) {
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => selecionarData(true),
+                          icon: const Icon(
+                            Icons.calendar_month_outlined,
+                            color: azulPrincipal,
+                          ),
+                          label: Text(
+                            dataInicial == null
+                                ? 'Data inicial'
+                                : 'Início: ${formatarData(Timestamp.fromDate(dataInicial!))}',
+                            style: const TextStyle(
+                              color: azulPrincipal,
+                              fontSize: 12,
                             ),
-                            hint: const Text('Todos os motivos'),
-                            items: [
-                              const DropdownMenuItem<String>(
-                                value: '',
-                                child: Text('Todos os motivos'),
-                              ),
-                              ...motivos.map(
-                                (motivo) => DropdownMenuItem<String>(
-                                  value: motivo,
-                                  child: Text(
-                                    motivo,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ),
-                            ],
-                            onChanged: (valor) {
-                              setState(() {
-                                motivoSelecionado =
-                                    valor == null || valor.isEmpty
-                                        ? null
-                                        : valor;
-                              });
-                            },
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: borda),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                         ),
-
-                        // LISTA DE DESPERDÍCIOS
-                        Expanded(
-                          child: filtrados.isEmpty
-                              ? Center(
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(24),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          pesquisa.isEmpty &&
-                                                  dataInicial == null && dataFinal == null &&
-                                                  motivoAtual == null
-                                              ? Icons.history
-                                              : Icons.search_off,
-                                          size: 48,
-                                          color: textoSecundario.withValues(
-                                            alpha: 0.6,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 12),
-                                        Text(
-                                          pesquisa.isEmpty &&
-                                                  dataInicial == null && dataFinal == null &&
-                                                  motivoAtual == null
-                                              ? 'Nenhum desperdício registrado.'
-                                              : 'Nenhum resultado encontrado para os filtros selecionados.',
-                                          style: const TextStyle(
-                                            color: textoSecundario,
-                                            fontSize: 14,
-                                          ),
-                                          textAlign: TextAlign.center,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                )
-                              : ListView.separated(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    20,
-                                    8,
-                                    20,
-                                    24,
-                                  ),
-                                  itemCount: filtrados.length,
-                                  separatorBuilder: (_, __) =>
-                                      const SizedBox(height: 12),
-                                  itemBuilder: (context, index) {
-                                    final doc = filtrados[index];
-                                    final dados = doc.data();
-
-                                    final produtoId =
-                                        dados['produtoId']?.toString() ?? '';
-
-                                    final produto = nomesProdutos[produtoId];
-
-                                    final nomeProduto =
-                                        produto?['nome']?.toString() ??
-                                            'Produto não encontrado';
-
-                                    final unidade =
-                                        produto?['unidade']?.toString() ??
-                                            'unidade';
-
-                                    final motivo =
-                                        dados['motivo']?.toString() ??
-                                            'Sem motivo';
-
-                                    final quantidade = formatarQuantidade(
-                                      dados['quantidade'],
-                                    );
-
-                                    final data = formatarData(
-                                      dados['dataDesperdicio'],
-                                    );
-
-                                    // DOCUMENTOS ANTIGOS SEM O CAMPO CONTINUAM
-                                    // SENDO CONSIDERADOS COMO BAIXA DE ESTOQUE.
-                                    final afetaEstoque =
-                                        dados['afetaEstoque'] != false;
-
-                                    return _cardDesperdicio(
-                                      nomeProduto: nomeProduto,
-                                      motivo: motivo,
-                                      quantidade: quantidade,
-                                      unidade: unidade,
-                                      data: data,
-                                      afetaEstoque: afetaEstoque,
-                                      aoTocar: () {
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (_) =>
-                                                DetalhesDesperdicioPage(
-                                              desperdicioId: doc.id,
-                                              dados: dados,
-                                              nomeProduto: nomeProduto,
-                                              unidade: unidade,
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                    );
-                                  },
-                                ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => selecionarData(false),
+                          icon: const Icon(
+                            Icons.calendar_month_outlined,
+                            color: azulPrincipal,
+                          ),
+                          label: Text(
+                            dataFinal == null
+                                ? 'Data final'
+                                : 'Fim: ${formatarData(Timestamp.fromDate(dataFinal!))}',
+                            style: const TextStyle(
+                              color: azulPrincipal,
+                              fontSize: 12,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: borda),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
                         ),
-                      ],
-                    );
-                  },
+                      ),
+                      if (dataInicial != null || dataFinal != null)
+                        IconButton(
+                          tooltip: 'Limpar período',
+                          onPressed: () {
+                            dataInicial = null;
+                            dataFinal = null;
+                            atualizarResultados();
+                          },
+                          icon: const Icon(
+                            Icons.close,
+                            color: textoSecundario,
+                          ),
+                        ),
+                    ],
+                  ),
                 );
               },
             ),
-          ),
-        ],
+
+            Expanded(
+              child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: FirebaseFirestore.instance
+                    .collection('produtos')
+                    .snapshots(),
+                builder: (context, produtosSnapshot) {
+                  if (produtosSnapshot.hasError) {
+                    return const Center(
+                      child: Text('Erro ao carregar produtos.'),
+                    );
+                  }
+
+                  if (!produtosSnapshot.hasData) {
+                    return const Center(
+                      child: CircularProgressIndicator(
+                        color: azulPrincipal,
+                      ),
+                    );
+                  }
+
+                  final nomesProdutos = <String, Map<String, dynamic>>{};
+
+                  for (final doc in produtosSnapshot.data!.docs) {
+                    nomesProdutos[doc.id] = doc.data();
+                  }
+
+                  return StreamBuilder<
+                      QuerySnapshot<Map<String, dynamic>>>(
+                    stream: FirebaseFirestore.instance
+                        .collection('desperdicios')
+                        .orderBy(
+                          'dataDesperdicio',
+                          descending: true,
+                        )
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return const Center(
+                          child: Text('Erro ao carregar histórico.'),
+                        );
+                      }
+
+                      if (!snapshot.hasData) {
+                        return const Center(
+                          child: CircularProgressIndicator(
+                            color: azulPrincipal,
+                          ),
+                        );
+                      }
+
+                      final documentos = snapshot.data!.docs;
+
+                      final motivos = documentos
+                          .map((doc) =>
+                              doc.data()['motivo']?.toString().trim() ?? '')
+                          .where((motivo) => motivo.isNotEmpty)
+                          .toSet()
+                          .toList()
+                        ..sort(
+                          (a, b) =>
+                              a.toLowerCase().compareTo(b.toLowerCase()),
+                        );
+
+                      return ValueListenableBuilder<int>(
+                        valueListenable: atualizacaoResultados,
+                        builder: (context, _, __) {
+                          final motivoAtual =
+                              motivos.contains(motivoSelecionado)
+                                  ? motivoSelecionado
+                                  : null;
+
+                          final filtrados = documentos.where((doc) {
+                            final dados = doc.data();
+
+                            final produtoId =
+                                dados['produtoId']?.toString() ?? '';
+
+                            final nomeProduto =
+                                nomesProdutos[produtoId]?['nome']
+                                        ?.toString() ??
+                                    'Produto não encontrado';
+
+                            final motivo =
+                                dados['motivo']?.toString() ?? '';
+
+                            final correspondePesquisa = nomeProduto
+                                .toLowerCase()
+                                .contains(pesquisa);
+
+                            final correspondeMotivo = motivoAtual == null ||
+                                motivo == motivoAtual;
+
+                            final valorData = dados['dataDesperdicio'];
+
+                            final dataRegistro = valorData is Timestamp
+                                ? valorData.toDate()
+                                : null;
+
+                            final inicio = dataInicial == null
+                                ? null
+                                : DateTime(
+                                    dataInicial!.year,
+                                    dataInicial!.month,
+                                    dataInicial!.day,
+                                  );
+
+                            final fimExclusivo = dataFinal == null
+                                ? null
+                                : DateTime(
+                                    dataFinal!.year,
+                                    dataFinal!.month,
+                                    dataFinal!.day + 1,
+                                  );
+
+                            final correspondeData =
+                                (inicio == null ||
+                                    (dataRegistro != null &&
+                                        !dataRegistro.isBefore(inicio))) &&
+                                (fimExclusivo == null ||
+                                    (dataRegistro != null &&
+                                        dataRegistro
+                                            .isBefore(fimExclusivo)));
+
+                            return correspondePesquisa &&
+                                correspondeMotivo &&
+                                correspondeData;
+                          }).toList();
+
+                          final semFiltros = pesquisa.isEmpty &&
+                              dataInicial == null &&
+                              dataFinal == null &&
+                              motivoAtual == null;
+
+                          return Column(
+                            children: [
+                              // SELETOR DE MOTIVOS
+                              Padding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                                child: DropdownButtonFormField<String>(
+                                  value: motivoAtual ?? '',
+                                  isExpanded: true,
+                                  decoration: InputDecoration(
+                                    labelText: 'Filtrar por motivo',
+                                    prefixIcon: const Icon(
+                                      Icons.filter_list,
+                                      color: textoSecundario,
+                                    ),
+                                    filled: true,
+                                    fillColor: Colors.white,
+                                    contentPadding:
+                                        const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                      vertical: 13,
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide:
+                                          const BorderSide(color: borda),
+                                    ),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide:
+                                          const BorderSide(color: borda),
+                                    ),
+                                  ),
+                                  hint: const Text('Todos os motivos'),
+                                  items: [
+                                    const DropdownMenuItem<String>(
+                                      value: '',
+                                      child: Text('Todos os motivos'),
+                                    ),
+                                    ...motivos.map(
+                                      (motivo) => DropdownMenuItem<String>(
+                                        value: motivo,
+                                        child: Text(
+                                          motivo,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                  onChanged: (valor) {
+                                    final novoMotivo =
+                                        valor == null || valor.isEmpty
+                                            ? null
+                                            : valor;
+
+                                    if (motivoSelecionado != novoMotivo) {
+                                      motivoSelecionado = novoMotivo;
+                                      atualizarResultados();
+                                    }
+                                  },
+                                ),
+                              ),
+
+                              // LISTA DE DESPERDÍCIOS
+                              Expanded(
+                                child: filtrados.isEmpty
+                                    ? Center(
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(24),
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                semFiltros
+                                                    ? Icons.history
+                                                    : Icons.search_off,
+                                                size: 48,
+                                                color: textoSecundario
+                                                    .withValues(alpha: 0.6),
+                                              ),
+                                              const SizedBox(height: 12),
+                                              Text(
+                                                semFiltros
+                                                    ? 'Nenhum desperdício registrado.'
+                                                    : 'Nenhum resultado encontrado para os filtros selecionados.',
+                                                style: const TextStyle(
+                                                  color: textoSecundario,
+                                                  fontSize: 14,
+                                                ),
+                                                textAlign: TextAlign.center,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      )
+                                    : ListView.separated(
+                                        padding: const EdgeInsets.fromLTRB(
+                                          20,
+                                          8,
+                                          20,
+                                          24,
+                                        ),
+                                        itemCount: filtrados.length,
+                                        separatorBuilder: (_, __) =>
+                                            const SizedBox(height: 12),
+                                        itemBuilder: (context, index) {
+                                          final doc = filtrados[index];
+                                          final dados = doc.data();
+
+                                          final produtoId =
+                                              dados['produtoId']?.toString() ??
+                                                  '';
+
+                                          final produto =
+                                              nomesProdutos[produtoId];
+
+                                          final nomeProduto =
+                                              produto?['nome']?.toString() ??
+                                                  'Produto não encontrado';
+
+                                          final unidade =
+                                              produto?['unidade']?.toString() ??
+                                                  'unidade';
+
+                                          final motivo =
+                                              dados['motivo']?.toString() ??
+                                                  'Sem motivo';
+
+                                          final quantidade =
+                                              formatarQuantidade(
+                                            dados['quantidade'],
+                                          );
+
+                                          final data = formatarData(
+                                            dados['dataDesperdicio'],
+                                          );
+
+                                          // DOCUMENTOS ANTIGOS SEM O CAMPO
+                                          // CONTINUAM SENDO CONSIDERADOS COMO
+                                          // BAIXA DE ESTOQUE.
+                                          final afetaEstoque =
+                                              dados['afetaEstoque'] != false;
+
+                                          return animarCard(
+                                            index: index,
+                                            total: filtrados.length,
+                                            child: _cardDesperdicio(
+                                              nomeProduto: nomeProduto,
+                                              motivo: motivo,
+                                              quantidade: quantidade,
+                                              unidade: unidade,
+                                              data: data,
+                                              afetaEstoque: afetaEstoque,
+                                              aoTocar: () {
+                                                Navigator.push(
+                                                  context,
+                                                  MaterialPageRoute(
+                                                    builder: (_) =>
+                                                        DetalhesDesperdicioPage(
+                                                      desperdicioId: doc.id,
+                                                      dados: dados,
+                                                      nomeProduto: nomeProduto,
+                                                      unidade: unidade,
+                                                    ),
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                          );
+                                        },
+                                      ),
+                              ),
+                            ],
+                          );
+                        },
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -640,9 +750,7 @@ class _HistoricoDesperdicioPageState
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            afetaEstoque
-                ? Icons.remove_circle_outline
-                : Icons.link,
+            afetaEstoque ? Icons.remove_circle_outline : Icons.link,
             size: 15,
             color: cor,
           ),
@@ -761,9 +869,7 @@ class DetalhesDesperdicioPage extends StatelessWidget {
                 ],
               ),
             ),
-
             const SizedBox(height: 24),
-
             const Text(
               'Informações do registro',
               style: TextStyle(
@@ -772,21 +878,17 @@ class DetalhesDesperdicioPage extends StatelessWidget {
                 fontWeight: FontWeight.bold,
               ),
             ),
-
             const SizedBox(height: 12),
-
             _informacao(
               'Motivo',
               dados['motivo']?.toString() ?? 'Não informado',
               Icons.report_problem_outlined,
             ),
-
             _informacao(
               'Data do desperdício',
               formatarData(dados['dataDesperdicio']),
               Icons.calendar_today_outlined,
             ),
-
             _informacao(
               'Observação',
               dados['observacao']?.toString().trim().isNotEmpty == true
@@ -794,9 +896,7 @@ class DetalhesDesperdicioPage extends StatelessWidget {
                   : 'Nenhuma observação informada.',
               Icons.notes_outlined,
             ),
-
             const SizedBox(height: 24),
-
             const Text(
               'Impacto no estoque',
               style: TextStyle(
@@ -805,9 +905,7 @@ class DetalhesDesperdicioPage extends StatelessWidget {
                 fontWeight: FontWeight.bold,
               ),
             ),
-
             const SizedBox(height: 12),
-
             _informacao(
               'Situação',
               afetaEstoque
@@ -815,7 +913,6 @@ class DetalhesDesperdicioPage extends StatelessWidget {
                   : 'Não houve nova baixa. O produto já havia sido retirado.',
               Icons.inventory_outlined,
             ),
-
             if (saidaId != null && saidaId.isNotEmpty) ...[
               const SizedBox(height: 8),
               _detalhesSaida(saidaId),
@@ -827,9 +924,7 @@ class DetalhesDesperdicioPage extends StatelessWidget {
   }
 
   Widget _statusEstoque(bool afetaEstoque) {
-    final cor = afetaEstoque
-        ? const Color(0xFFEA580C)
-        : azulPrincipal;
+    final cor = afetaEstoque ? const Color(0xFFEA580C) : azulPrincipal;
 
     return Container(
       padding: const EdgeInsets.symmetric(

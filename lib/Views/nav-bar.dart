@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -20,6 +21,9 @@ class _HomeNavigationPageState extends State<HomeNavigationPage> {
   int paginaSelecionada = 0;
   int _homeAnimationKey = 0;
   int _estoqueAnimationKey = 0;
+  int _desperdicioAnimationKey = 0;
+  int _relatoriosAnimationKey = 0;
+  int _usuariosAnimationKey = 0;
 
   bool carregandoPerfil = true;
   bool ehAdmin = false;
@@ -89,15 +93,34 @@ class _HomeNavigationPageState extends State<HomeNavigationPage> {
 
   // Controla a seleção das páginas disponíveis.
   void selecionarPagina(int index) {
-  setState(() {
-    // Reinicia a Home sempre que o usuário voltar para ela.
-    if (index == 0 && paginaSelecionada != 0) {
-      _homeAnimationKey++;
-    }
+    setState(() {
+      // Reinicia a Home ao voltar para ela.
+      if (index == 0 && paginaSelecionada != 0) {
+        _homeAnimationKey++;
+      }
 
-    paginaSelecionada = index;
-  });
-}
+      // Reinicia o Estoque ao entrar nele.
+      if (index == 1 && paginaSelecionada != 1) {
+        _estoqueAnimationKey++;
+      }
+
+      // Reinicia a animação ao entrar em Desperdício.
+      if (index == 2 && paginaSelecionada != 2) {
+        _desperdicioAnimationKey++;
+      }
+
+      if (index == 3 && paginaSelecionada != 3) {
+        _relatoriosAnimationKey++;
+      }
+
+      if (ehAdmin &&
+        index == 4 &&
+        paginaSelecionada != 4) {
+      _usuariosAnimationKey++;
+      }
+      paginaSelecionada = index;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -166,9 +189,15 @@ class _HomeNavigationPageState extends State<HomeNavigationPage> {
             EstoquePage(
               animationKey: _estoqueAnimationKey,
             ),
-            const DesperdicioPage(),
-            const RelatoriosPage(),
-            const ListaFuncionariosScreen(),
+            DesperdicioPage(
+              animationKey: _desperdicioAnimationKey,
+            ),
+            RelatoriosPage(
+              animationKey: _relatoriosAnimationKey,
+            ),
+            ListaFuncionariosScreen(
+              animationKey: _usuariosAnimationKey,
+            ),
           ]
         : [
             HomePage(
@@ -177,7 +206,9 @@ class _HomeNavigationPageState extends State<HomeNavigationPage> {
             EstoquePage(
               animationKey: _estoqueAnimationKey,
             ),
-            const DesperdicioPage(),
+            DesperdicioPage(
+              animationKey: _desperdicioAnimationKey,
+            ),
           ];
 
     // Itens correspondentes às páginas.
@@ -219,15 +250,56 @@ class _HomeNavigationPageState extends State<HomeNavigationPage> {
         children: paginas,
       ),
 
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: paginaSelecionada,
-        onDestinationSelected: selecionarPagina,
-        backgroundColor: Colors.white,
-        indicatorColor: const Color(0xFFDBEAFE),
-        elevation: 3,
-        labelBehavior:
-            NavigationDestinationLabelBehavior.alwaysShow,
-        destinations: destinos,
+      // Navbar flutuante com entrada animada.
+      bottomNavigationBar: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: TweenAnimationBuilder<double>(
+          tween: Tween<double>(begin: 0, end: 1),
+          duration: const Duration(milliseconds: 650),
+          curve: Curves.easeOutCubic,
+          builder: (context, valor, child) {
+            return Opacity(
+              opacity: valor,
+              child: Transform.translate(
+                offset: Offset(0, 18 * (1 - valor)),
+                child: child,
+              ),
+            );
+          },
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.09),
+                  blurRadius: 20,
+                  spreadRadius: 0,
+                  offset: const Offset(0, 5),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: NavigationBar(
+                selectedIndex: paginaSelecionada,
+                onDestinationSelected: selecionarPagina,
+                backgroundColor: Colors.transparent,
+                surfaceTintColor: Colors.transparent,
+                shadowColor: Colors.transparent,
+                elevation: 0,
+                height: 76,
+                animationDuration:
+                    const Duration(milliseconds: 400),
+                indicatorColor: const Color(0xFFDBEAFE),
+                labelBehavior:
+                    NavigationDestinationLabelBehavior.alwaysShow,
+                destinations: destinos,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

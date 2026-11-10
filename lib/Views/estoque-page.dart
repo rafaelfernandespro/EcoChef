@@ -1,4 +1,3 @@
-
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -55,13 +54,16 @@ class EstoquePage extends StatefulWidget {
 }
 
 class _EstoquePageState extends State<EstoquePage>
-  with SingleTickerProviderStateMixin {
-
+    with TickerProviderStateMixin {
   late final AnimationController _animacaoController;
-  bool _animacaoInicialIniciada = false;
+  late final AnimationController _resultadosController;
 
   final TextEditingController pesquisaController =
       TextEditingController();
+
+  final FocusNode pesquisaFocusNode = FocusNode();
+
+  final ValueNotifier<int> atualizacaoResultados = ValueNotifier<int>(0);
 
   String filtroStatus = 'Todos';
   String filtroTipo = 'Todos';
@@ -107,14 +109,22 @@ class _EstoquePageState extends State<EstoquePage>
     'unidade',
   ];
 
- @override
+  @override
   void initState() {
     super.initState();
 
     _animacaoController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 650),
+      duration: const Duration(milliseconds: 1000),
     );
+
+    _resultadosController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    );
+
+    _animacaoController.forward();
+    _resultadosController.forward();
 
     _ouvirProdutos();
     _ouvirEntradas();
@@ -128,7 +138,14 @@ class _EstoquePageState extends State<EstoquePage>
 
     if (oldWidget.animationKey != widget.animationKey) {
       _animacaoController.forward(from: 0);
+      _resultadosController.forward(from: 0);
     }
+  }
+
+  // Atualiza somente os resultados da pesquisa e dos filtros.
+  void atualizarResultados() {
+    atualizacaoResultados.value++;
+    _resultadosController.forward(from: 0);
   }
 
   // Normaliza nomes para comparação.
@@ -158,8 +175,7 @@ class _EstoquePageState extends State<EstoquePage>
       if (dados['ativo'] == false) continue;
 
       final nomeExistente = _normalizarNome(
-        (dados['nomeNormalizado'] ?? dados['nome'] ?? '')
-            .toString(),
+        (dados['nomeNormalizado'] ?? dados['nome'] ?? '').toString(),
       );
 
       if (nomeExistente == nomeNormalizado) {
@@ -193,7 +209,6 @@ class _EstoquePageState extends State<EstoquePage>
   }
 
   // Escuta as entradas de estoque em tempo real.
-  
   void _ouvirEntradas() {
     _entradasSubscription?.cancel();
 
@@ -214,14 +229,12 @@ class _EstoquePageState extends State<EstoquePage>
             continue;
           }
 
-          // Utilizar somente a quantidade ainda disponível no lote.
           final quantidade =
               (dados['quantidadeDisponivel'] as num?)?.toDouble() ?? 0.0;
 
           quantidades[produtoId] =
               (quantidades[produtoId] ?? 0.0) + quantidade;
 
-          // Lotes zerados não devem influenciar o próximo vencimento.
           if (quantidade <= 0) continue;
 
           final validadeTimestamp = dados['validade'];
@@ -268,7 +281,6 @@ class _EstoquePageState extends State<EstoquePage>
       },
     );
   }
-
 
   // Escuta as saídas normais de estoque em tempo real.
   void _ouvirSaidas() {
@@ -332,14 +344,13 @@ class _EstoquePageState extends State<EstoquePage>
         for (final documento in snapshot.docs) {
           final dados = documento.data();
 
-          // Considera somente desperdícios que geram baixa.
-          // Documentos antigos, sem afetaEstoque, continuam contando.
           if (dados.containsKey('afetaEstoque') &&
               dados['afetaEstoque'] != true) {
             continue;
           }
 
           final produtoId = dados['produtoId']?.toString();
+
           if (produtoId == null || produtoId.isEmpty) {
             continue;
           }
@@ -406,21 +417,13 @@ class _EstoquePageState extends State<EstoquePage>
       carregando = false;
       erroCarregamento = null;
     });
-
-    if (!_animacaoInicialIniciada) {
-      _animacaoInicialIniciada = true;
-      _animacaoController.forward(from: 0);
-    }
   }
 
   // Calcula o estoque disponível de cada produto.
-  
   void _recalcularProdutos() {
     for (int i = 0; i < produtos.length; i++) {
       final produto = produtos[i];
 
-      // O saldo já considera entradas, saídas e desperdícios,
-      // pois cada movimentação atualiza quantidadeDisponivel.
       final quantidade =
           _quantidadesPorProduto[produto.id] ?? 0.0;
 
@@ -445,12 +448,9 @@ class _EstoquePageState extends State<EstoquePage>
     }
 
     produtos.sort(
-      (a, b) => a.nome
-          .toLowerCase()
-          .compareTo(b.nome.toLowerCase()),
+      (a, b) => a.nome.toLowerCase().compareTo(b.nome.toLowerCase()),
     );
   }
-
 
   @override
   void dispose() {
@@ -460,7 +460,11 @@ class _EstoquePageState extends State<EstoquePage>
     _desperdiciosSubscription?.cancel();
 
     pesquisaController.dispose();
+    pesquisaFocusNode.dispose();
+    atualizacaoResultados.dispose();
+
     _animacaoController.dispose();
+    _resultadosController.dispose();
 
     super.dispose();
   }
@@ -474,20 +478,17 @@ class _EstoquePageState extends State<EstoquePage>
   }
 
   List<ProdutoEstoque> get produtosFiltrados {
-    final pesquisa =
-        pesquisaController.text.toLowerCase().trim();
+    final pesquisa = pesquisaController.text.toLowerCase().trim();
 
     return produtos.where((produto) {
       final correspondeNome =
           produto.nome.toLowerCase().contains(pesquisa);
 
       final correspondeStatus =
-          filtroStatus == 'Todos' ||
-              produto.status == filtroStatus;
+          filtroStatus == 'Todos' || produto.status == filtroStatus;
 
       final correspondeTipo =
-          filtroTipo == 'Todos' ||
-              produto.tipo == filtroTipo;
+          filtroTipo == 'Todos' || produto.tipo == filtroTipo;
 
       return correspondeNome &&
           correspondeStatus &&
@@ -529,11 +530,11 @@ class _EstoquePageState extends State<EstoquePage>
 
     if (!mounted || resultado != true) return;
 
-    setState(() {
-      filtroStatus = 'Todos';
-      filtroTipo = 'Todos';
-      pesquisaController.clear();
-    });
+    filtroStatus = 'Todos';
+    filtroTipo = 'Todos';
+    pesquisaController.clear();
+
+    atualizarResultados();
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -560,8 +561,7 @@ class _EstoquePageState extends State<EstoquePage>
     final resultado = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (context) =>
-            const RegistrarEntradaEstoquePage(),
+        builder: (context) => const RegistrarEntradaEstoquePage(),
       ),
     );
 
@@ -592,8 +592,7 @@ class _EstoquePageState extends State<EstoquePage>
     await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (context) =>
-            const RegistrarSaidaEstoquePage(),
+        builder: (context) => const RegistrarSaidaEstoquePage(),
       ),
     );
   }
@@ -674,8 +673,7 @@ class _EstoquePageState extends State<EstoquePage>
 
   // Formulário para editar produto.
   Future<void> _editarProduto(ProdutoEstoque produto) async {
-    final nomeController =
-        TextEditingController(text: produto.nome);
+    final nomeController = TextEditingController(text: produto.nome);
 
     final minimoController = TextEditingController(
       text: produto.estoqueMinimo.toString().replaceAll('.', ','),
@@ -685,10 +683,8 @@ class _EstoquePageState extends State<EstoquePage>
         categorias.contains(produto.tipo) ? produto.tipo : 'Outros';
 
     String unidadeSelecionada =
-        unidades.contains(produto.unidade)
-            ? produto.unidade
-            : 'unidade';
-    
+        unidades.contains(produto.unidade) ? produto.unidade : 'unidade';
+
     final nomeOriginal = nomeController.text.trim();
     final minimoOriginal = minimoController.text.trim();
     final categoriaOriginal = categoriaSelecionada;
@@ -702,12 +698,11 @@ class _EstoquePageState extends State<EstoquePage>
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, atualizarDialog) {
-
             final houveAlteracao =
-            nomeController.text.trim() != nomeOriginal ||
-            minimoController.text.trim() != minimoOriginal ||
-            categoriaSelecionada != categoriaOriginal ||
-            unidadeSelecionada != unidadeOriginal;
+                nomeController.text.trim() != nomeOriginal ||
+                minimoController.text.trim() != minimoOriginal ||
+                categoriaSelecionada != categoriaOriginal ||
+                unidadeSelecionada != unidadeOriginal;
 
             return AlertDialog(
               backgroundColor: Colors.white,
@@ -823,9 +818,7 @@ class _EstoquePageState extends State<EstoquePage>
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
-                        decoration: _decoracaoCampo(
-                          'Ex.: 10',
-                        ),
+                        decoration: _decoracaoCampo('Ex.: 10'),
                         validator: (valor) {
                           final numero = double.tryParse(
                             (valor ?? '').replaceAll(',', '.'),
@@ -857,61 +850,63 @@ class _EstoquePageState extends State<EstoquePage>
                     backgroundColor: azulPrincipal,
                     foregroundColor: Colors.white,
                   ),
-                  onPressed: houveAlteracao ? () async {
-                    if (!formKey.currentState!.validate()) return;
+                  onPressed: houveAlteracao
+                      ? () async {
+                          if (!formKey.currentState!.validate()) return;
 
-                    final nome = nomeController.text.trim();
+                          final nome = nomeController.text.trim();
 
-                    try {
-                      final existe = await _nomeJaExiste(
-                        nome,
-                        produto.id,
-                      );
+                          try {
+                            final existe = await _nomeJaExiste(
+                              nome,
+                              produto.id,
+                            );
 
-                      if (existe) {
-                        if (!dialogContext.mounted) return;
+                            if (existe) {
+                              if (!dialogContext.mounted) return;
 
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'Já existe um produto ativo com esse nome.',
-                            ),
-                          ),
-                        );
-                        return;
-                      }
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Já existe um produto ativo com esse nome.',
+                                  ),
+                                ),
+                              );
+                              return;
+                            }
 
-                      final estoqueMinimo = double.parse(
-                        minimoController.text.replaceAll(',', '.'),
-                      );
+                            final estoqueMinimo = double.parse(
+                              minimoController.text.replaceAll(',', '.'),
+                            );
 
-                      await FirebaseFirestore.instance
-                          .collection('produtos')
-                          .doc(produto.id)
-                          .update({
-                        'nome': nome,
-                        'nomeNormalizado': _normalizarNome(nome),
-                        'categoria': categoriaSelecionada,
-                        'unidade': unidadeSelecionada,
-                        'estoqueMinimo': estoqueMinimo,
-                        'atualizadoEm': FieldValue.serverTimestamp(),
-                      });
+                            await FirebaseFirestore.instance
+                                .collection('produtos')
+                                .doc(produto.id)
+                                .update({
+                              'nome': nome,
+                              'nomeNormalizado': _normalizarNome(nome),
+                              'categoria': categoriaSelecionada,
+                              'unidade': unidadeSelecionada,
+                              'estoqueMinimo': estoqueMinimo,
+                              'atualizadoEm': FieldValue.serverTimestamp(),
+                            });
 
-                      if (!dialogContext.mounted) return;
+                            if (!dialogContext.mounted) return;
 
-                      Navigator.pop(dialogContext, true);
-                    } catch (erro) {
-                      if (!dialogContext.mounted) return;
+                            Navigator.pop(dialogContext, true);
+                          } catch (erro) {
+                            if (!dialogContext.mounted) return;
 
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'Não foi possível editar o produto: $erro',
-                          ),
-                        ),
-                      );
-                    }
-                  } : null,
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Não foi possível editar o produto: $erro',
+                                ),
+                              ),
+                            );
+                          }
+                        }
+                      : null,
                   child: const Text('Salvar alterações'),
                 ),
               ],
@@ -1040,170 +1035,197 @@ class _EstoquePageState extends State<EstoquePage>
 
   @override
   Widget build(BuildContext context) {
-    final lista = produtosFiltrados;
-
     return Scaffold(
       backgroundColor: fundo,
       body: SafeArea(
-        child: CustomScrollView(
-          slivers: [
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _cabecalho(),
-                    const SizedBox(height: 22),
-                    _campoPesquisa(),
-                    const SizedBox(height: 12),
-                    _filtros(),
-                    const SizedBox(height: 22),
-                    Row(
-                      children: [
-                        const Text(
-                          'Produtos cadastrados',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: textoPrincipal,
-                          ),
+        child: ValueListenableBuilder<int>(
+          valueListenable: atualizacaoResultados,
+          builder: (context, _, __) {
+            final lista = produtosFiltrados;
+
+            return FadeTransition(
+              opacity: CurvedAnimation(
+                parent: _animacaoController,
+                curve: Curves.easeOut,
+              ),
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0, 0.035),
+                  end: Offset.zero,
+                ).animate(
+                  CurvedAnimation(
+                    parent: _animacaoController,
+                    curve: Curves.easeOutCubic,
+                  ),
+                ),
+                child: CustomScrollView(
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _cabecalho(),
+                            const SizedBox(height: 22),
+                            _campoPesquisa(),
+                            const SizedBox(height: 12),
+                            _filtros(),
+                            const SizedBox(height: 22),
+                            Row(
+                              children: [
+                                const Text(
+                                  'Produtos cadastrados',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    color: textoPrincipal,
+                                  ),
+                                ),
+                                const Spacer(),
+                                Text(
+                                  '${lista.length} ${lista.length == 1 ? 'produto' : 'produtos'}',
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    color: textoSecundario,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                          ],
                         ),
-                        const Spacer(),
-                        Text(
-                          '${lista.length} ${lista.length == 1 ? 'produto' : 'produtos'}',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: textoSecundario,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
-                    const SizedBox(height: 12),
+                    if (carregando)
+                      const SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: Center(
+                          child: CircularProgressIndicator(),
+                        ),
+                      )
+                    else if (erroCarregamento != null)
+                      SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.cloud_off,
+                                  size: 42,
+                                  color: vermelhoStatus,
+                                ),
+                                const SizedBox(height: 12),
+                                const Text(
+                                  'Não foi possível carregar os dados do estoque.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: textoPrincipal,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                TextButton.icon(
+                                  onPressed: () {
+                                    setState(() {
+                                      carregando = true;
+                                      erroCarregamento = null;
+                                    });
+
+                                    _ouvirProdutos();
+                                    _ouvirEntradas();
+                                    _ouvirSaidas();
+                                    _ouvirDesperdicios();
+                                  },
+                                  icon: const Icon(Icons.refresh),
+                                  label: const Text('Tentar novamente'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      )
+                    else if (lista.isEmpty)
+                      const SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: Center(
+                          child: Padding(
+                            padding: EdgeInsets.fromLTRB(20, 20, 20, 24),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.search_off,
+                                  size: 44,
+                                  color: textoSecundario,
+                                ),
+                                SizedBox(height: 12),
+                                Text(
+                                  'Nenhum produto encontrado.',
+                                  style: TextStyle(
+                                    color: textoSecundario,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+                        sliver: SliverList(
+                          delegate: SliverChildBuilderDelegate(
+                            (context, index) {
+                              final inicio =
+                                  (index * 0.10).clamp(0.0, 0.65);
+                              final fim =
+                                  (inicio + 0.35).clamp(0.0, 1.0);
+
+                              final animacao = CurvedAnimation(
+                                parent: _resultadosController,
+                                curve: Interval(
+                                  inicio,
+                                  fim,
+                                  curve: Curves.easeOutCubic,
+                                ),
+                              );
+
+                              return AnimatedBuilder(
+                                animation: _resultadosController,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: _cardProduto(lista[index]),
+                                ),
+                                builder: (context, child) {
+                                  final progresso = animacao.value;
+
+                                  return Opacity(
+                                    opacity: progresso,
+                                    child: Transform.translate(
+                                      offset: Offset(
+                                        0,
+                                        18 * (1 - progresso),
+                                      ),
+                                      child: child,
+                                    ),
+                                  );
+                                },
+                              );
+                            },
+                            childCount: lista.length,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
-            ),
-            if (carregando)
-              const SliverFillRemaining(
-                hasScrollBody: false,
-                child: Center(
-                  child: CircularProgressIndicator(),
-                ),
-              )
-            else if (erroCarregamento != null)
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.cloud_off,
-                          size: 42,
-                          color: vermelhoStatus,
-                        ),
-                        const SizedBox(height: 12),
-                        const Text(
-                          'Não foi possível carregar os dados do estoque.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: textoPrincipal,
-                            fontSize: 15,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        TextButton.icon(
-                          onPressed: () {
-                            setState(() {
-                              carregando = true;
-                              erroCarregamento = null;
-                            });
-
-                            _ouvirProdutos();
-                            _ouvirEntradas();
-                            _ouvirSaidas();
-                            _ouvirDesperdicios();
-                          },
-                          icon: const Icon(Icons.refresh),
-                          label: const Text('Tentar novamente'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              )
-            else if (lista.isEmpty)
-              const SliverFillRemaining(
-                hasScrollBody: false,
-                child: Center(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(20, 20, 20, 24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.search_off,
-                          size: 44,
-                          color: textoSecundario,
-                        ),
-                        SizedBox(height: 12),
-                        Text(
-                          'Nenhum produto encontrado.',
-                          style: TextStyle(
-                            color: textoSecundario,
-                            fontSize: 15,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              )
-            else
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-                sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      final inicio = (index * 0.10).clamp(0.0, 0.65);
-                      final fim = (inicio + 0.35).clamp(0.0, 1.0);
-
-                      final animacao = CurvedAnimation(
-                        parent: _animacaoController,
-                        curve: Interval(
-                          inicio,
-                          fim,
-                          curve: Curves.easeOutCubic,
-                        ),
-                      );
-
-                      return AnimatedBuilder(
-                        animation: _animacaoController,
-                        child: Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: _cardProduto(lista[index]),
-                        ),
-                        builder: (context, child) {
-                          final progresso = animacao.value;
-
-                          return Opacity(
-                            opacity: progresso,
-                            child: Transform.translate(
-                              offset: Offset(0, 18 * (1 - progresso)),
-                              child: child,
-                            ),
-                          );
-                        },
-                      );
-                    },
-                    childCount: lista.length,
-                  ),
-                ),
-              ),
-          ],
+            );
+          },
         ),
       ),
       floatingActionButton: FloatingActionButton(
@@ -1378,7 +1400,10 @@ class _EstoquePageState extends State<EstoquePage>
   Widget _campoPesquisa() {
     return TextField(
       controller: pesquisaController,
-      onChanged: (_) => setState(() {}),
+      focusNode: pesquisaFocusNode,
+      onChanged: (_) {
+        atualizarResultados();
+      },
       decoration: InputDecoration(
         hintText: 'Pesquisar produto...',
         hintStyle: const TextStyle(color: textoSecundario),
@@ -1390,7 +1415,8 @@ class _EstoquePageState extends State<EstoquePage>
             ? IconButton(
                 onPressed: () {
                   pesquisaController.clear();
-                  setState(() {});
+                  atualizarResultados();
+                  pesquisaFocusNode.requestFocus();
                 },
                 icon: const Icon(Icons.close),
               )
@@ -1450,9 +1476,12 @@ class _EstoquePageState extends State<EstoquePage>
                 ],
                 dica: 'Status',
                 aoMudar: (valor) {
-                  setState(() {
-                    filtroStatus = valor ?? 'Todos';
-                  });
+                  final novoValor = valor ?? 'Todos';
+
+                  if (filtroStatus != novoValor) {
+                    filtroStatus = novoValor;
+                    atualizarResultados();
+                  }
                 },
               ),
             ),
@@ -1463,9 +1492,12 @@ class _EstoquePageState extends State<EstoquePage>
                 itens: tiposDisponiveis,
                 dica: 'Tipo',
                 aoMudar: (valor) {
-                  setState(() {
-                    filtroTipo = valor ?? 'Todos';
-                  });
+                  final novoValor = valor ?? 'Todos';
+
+                  if (filtroTipo != novoValor) {
+                    filtroTipo = novoValor;
+                    atualizarResultados();
+                  }
                 },
               ),
             ),
@@ -1482,6 +1514,7 @@ class _EstoquePageState extends State<EstoquePage>
     required ValueChanged<String?> aoMudar,
   }) {
     return DropdownButtonFormField<String>(
+      key: ValueKey('$dica-$valor-${itens.length}'),
       initialValue: valor,
       isExpanded: true,
       decoration: InputDecoration(
