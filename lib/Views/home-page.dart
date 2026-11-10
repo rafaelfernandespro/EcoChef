@@ -1,4 +1,4 @@
-
+import '../utils/duracoes-animacoes.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -32,7 +32,7 @@ class HomePage extends StatefulWidget {
 
       _entradaController = AnimationController(
         vsync: this,
-        duration: const Duration(milliseconds: 900),
+        duration: DuracoesAnimacoes.entrada,
       );
     }
 

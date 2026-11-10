@@ -1,4 +1,4 @@
-
+import 'package:ecochef/utils/duracoes-animacoes.dart';
 import 'package:flutter/material.dart';
 
 import 'registrar-desperdicio.dart';
@@ -35,7 +35,7 @@ class _DesperdicioPageState extends State<DesperdicioPage>
 
     _animacaoController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1000),
+      duration: DuracoesAnimacoes.entrada,
     );
   }
 

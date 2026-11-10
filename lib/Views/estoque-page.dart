@@ -1,5 +1,5 @@
 import 'dart:async';
-
+import '../utils/duracoes-animacoes.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
@@ -115,12 +115,12 @@ class _EstoquePageState extends State<EstoquePage>
 
     _animacaoController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1000),
+      duration: DuracoesAnimacoes.entrada,
     );
 
     _resultadosController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1000),
+      duration: DuracoesAnimacoes.resultados,
     );
 
     _animacaoController.forward();

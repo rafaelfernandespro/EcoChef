@@ -1,4 +1,4 @@
-
+import '../utils/duracoes-animacoes.dart';
 import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -42,13 +42,13 @@ class _RelatoriosPageState extends State<RelatoriosPage>
     // Animação principal da tela.
     _animacaoController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1400),
+      duration: DuracoesAnimacoes.entrada,
     );
 
     // Animação exclusiva das barras da evolução.
     _evolucaoController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1400),
+      duration: DuracoesAnimacoes.evolucao,
     );
   }
 

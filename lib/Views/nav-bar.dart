@@ -35,7 +35,6 @@ class _HomeNavigationPageState extends State<HomeNavigationPage> {
     carregarPerfil();
   }
 
-  // Consulta o perfil do usuário conectado.
   Future<void> carregarPerfil() async {
     try {
       final usuario = FirebaseAuth.instance.currentUser;
@@ -91,20 +90,16 @@ class _HomeNavigationPageState extends State<HomeNavigationPage> {
     }
   }
 
-  // Controla a seleção das páginas disponíveis.
   void selecionarPagina(int index) {
     setState(() {
-      // Reinicia a Home ao voltar para ela.
       if (index == 0 && paginaSelecionada != 0) {
         _homeAnimationKey++;
       }
 
-      // Reinicia o Estoque ao entrar nele.
       if (index == 1 && paginaSelecionada != 1) {
         _estoqueAnimationKey++;
       }
 
-      // Reinicia a animação ao entrar em Desperdício.
       if (index == 2 && paginaSelecionada != 2) {
         _desperdicioAnimationKey++;
       }
@@ -114,10 +109,11 @@ class _HomeNavigationPageState extends State<HomeNavigationPage> {
       }
 
       if (ehAdmin &&
-        index == 4 &&
-        paginaSelecionada != 4) {
-      _usuariosAnimationKey++;
+          index == 4 &&
+          paginaSelecionada != 4) {
+        _usuariosAnimationKey++;
       }
+
       paginaSelecionada = index;
     });
   }
@@ -180,7 +176,6 @@ class _HomeNavigationPageState extends State<HomeNavigationPage> {
       );
     }
 
-    // Páginas disponíveis para cada perfil.
     final List<Widget> paginas = ehAdmin
         ? [
             HomePage(
@@ -211,7 +206,6 @@ class _HomeNavigationPageState extends State<HomeNavigationPage> {
             ),
           ];
 
-    // Itens correspondentes às páginas.
     final List<NavigationDestination> destinos = [
       const NavigationDestination(
         icon: Icon(Icons.home_outlined),
@@ -242,6 +236,10 @@ class _HomeNavigationPageState extends State<HomeNavigationPage> {
       ],
     ];
 
+    // Verifica se a tela possui espaço suficiente.
+    final larguraTela = MediaQuery.sizeOf(context).width;
+    final telaEstreita = larguraTela <= 400;
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
 
@@ -250,10 +248,14 @@ class _HomeNavigationPageState extends State<HomeNavigationPage> {
         children: paginas,
       ),
 
-      // Navbar flutuante com entrada animada.
       bottomNavigationBar: SafeArea(
         top: false,
-        minimum: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        minimum: EdgeInsets.fromLTRB(
+          telaEstreita ? 8 : 16,
+          0,
+          telaEstreita ? 8 : 16,
+          8,
+        ),
         child: TweenAnimationBuilder<double>(
           tween: Tween<double>(begin: 0, end: 1),
           duration: const Duration(milliseconds: 650),
@@ -293,8 +295,15 @@ class _HomeNavigationPageState extends State<HomeNavigationPage> {
                 animationDuration:
                     const Duration(milliseconds: 400),
                 indicatorColor: const Color(0xFFDBEAFE),
-                labelBehavior:
-                    NavigationDestinationLabelBehavior.alwaysShow,
+
+                // Em telas estreitas, exibe somente o
+                // nome da aba selecionada.
+                labelBehavior: telaEstreita
+                    ? NavigationDestinationLabelBehavior
+                        .onlyShowSelected
+                    : NavigationDestinationLabelBehavior
+                        .alwaysShow,
+
                 destinations: destinos,
               ),
             ),

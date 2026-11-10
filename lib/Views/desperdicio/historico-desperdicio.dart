@@ -1,3 +1,4 @@
+import 'package:ecochef/utils/duracoes-animacoes.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
@@ -35,12 +36,12 @@ class _HistoricoDesperdicioPageState extends State<HistoricoDesperdicioPage>
 
     _entradaController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 650),
+      duration: DuracoesAnimacoes.entrada,
     );
 
     _resultadosController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1000),
+      duration: DuracoesAnimacoes.resultados,
     );
 
     _entradaController.forward();

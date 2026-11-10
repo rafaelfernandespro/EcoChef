@@ -1,4 +1,4 @@
-
+import 'package:ecochef/utils/duracoes-animacoes.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -44,12 +44,12 @@ class _ListaFuncionariosScreenState
 
     _animacaoController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2400),
+      duration: DuracoesAnimacoes.entrada,
     );
 
     _resultadosController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1800),
+      duration: DuracoesAnimacoes.resultados,
     );
 
     _animacaoController.forward();
